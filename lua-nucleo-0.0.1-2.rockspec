@@ -1,10 +1,10 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "lua-nucleo"
-version = "0.0.1-1"
+version = "0.0.1-2"
 -- LuaDist source
 source = {
-  tag = "0.0.1-1",
+  tag = "0.0.1-2",
   url = "git://github.com/LuaDist-testing/lua-nucleo.git"
 }
 -- Original source
@@ -14,6 +14,10 @@ source = {
 -- }
 description = {
    summary = "A random collection of core and utility level Lua libraries",
+   detailed = [[
+       Lua-Nucleo is a random collection of core and utility level Lua
+       libraries.
+   ]],
    homepage = "http://github.com/lua-nucleo/lua-nucleo",
    license = "MIT/X11"
 }
