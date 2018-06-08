@@ -1,6 +1,8 @@
+--------------------------------------------------------------------------------
 -- 0160-string.lua: tests for string-related tools
 -- This file is a part of lua-nucleo library
 -- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+--------------------------------------------------------------------------------
 
 local make_suite = assert(loadfile('test/test-lib/init/strict.lua'))(...)
 
@@ -13,13 +15,15 @@ local arguments
 local ensure,
       ensure_equals,
       ensure_strequals,
-      ensure_tequals
+      ensure_tequals,
+      ensure_fails_with_substring
       = import 'lua-nucleo/ensure.lua'
       {
         'ensure',
         'ensure_equals',
         'ensure_strequals',
-        'ensure_tequals'
+        'ensure_tequals',
+        'ensure_fails_with_substring'
       }
 
 local make_concatter,
@@ -41,6 +45,8 @@ local make_concatter,
       ends_with,
       create_escape_subst,
       url_encode,
+      integer_to_string_with_base,
+      cut_with_ellipsis,
       string_exports
       = import 'lua-nucleo/string.lua'
       {
@@ -62,7 +68,9 @@ local make_concatter,
         'starts_with',
         'ends_with',
         'create_escape_subst',
-        'url_encode'
+        'url_encode',
+        'integer_to_string_with_base',
+        'cut_with_ellipsis'
       }
 
 --------------------------------------------------------------------------------
@@ -330,6 +338,152 @@ test:test_for "url_encode" (function ()
       "symbols",
       url_encode("1234567890-=!@#$%^&*()_+"),
       "1234567890-%3D%21%40%23%24%25%5E%26%2A%28%29_%2B"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:test_for "integer_to_string_with_base" (function()
+  ensure_equals("simple", integer_to_string_with_base(10, 26), "A")
+  ensure_equals("empty base", integer_to_string_with_base(10), "10")
+  ensure_equals("test with negative numbers", integer_to_string_with_base(-11, 26), "-B")
+  ensure_equals("test with zero and empty base", integer_to_string_with_base(0), "0")
+  ensure_equals("test with zero and non-empty base", integer_to_string_with_base(0, 15), "0")
+  ensure_equals("test with negative zero and empty base", integer_to_string_with_base(-0), "0")
+
+  local n = 136
+  local base = 36
+  local str = integer_to_string_with_base(n, base)
+  ensure_equals("test with tonumber", tonumber(str, base), n)
+
+  ensure_fails_with_substring("test with empty params", integer_to_string_with_base, "n must be a number")
+  ensure_fails_with_substring(
+      "test with string value of base",
+      function()
+        integer_to_string_with_base(10, "asd")
+      end,
+      "base must be a number"
+    )
+  ensure_fails_with_substring(
+      "test with negative base",
+      function()
+        integer_to_string_with_base(10, -10)
+      end,
+      "base out of range"
+    )
+  ensure_fails_with_substring(
+      "test on nan",
+      function()
+        integer_to_string_with_base(0/0)
+      end,
+      "n is nan"
+    )
+  ensure_fails_with_substring(
+      "test on +inf",
+      function()
+        integer_to_string_with_base(1/0)
+      end,
+      "n is inf"
+    )
+  ensure_fails_with_substring(
+      "test on -inf",
+      function()
+        integer_to_string_with_base(-1/0)
+      end,
+      "n is inf"
+    )
+
+  ensure_fails_with_substring(
+      "test on -inf",
+      function()
+        integer_to_string_with_base(-1/0)
+      end,
+      "n is inf"
+    )
+end)
+
+test:test_for "cut_with_ellipsis" (function()
+
+  local test_string = "test long string"
+
+  ensure_equals(
+      "test with string with correct max length",
+      cut_with_ellipsis(test_string, #test_string),
+      test_string
+    )
+
+  ensure_equals(
+      "test with string length - 1",
+      cut_with_ellipsis(test_string, #test_string - 1),
+      "test long st..."
+    )
+
+  ensure_equals(
+      "test with string length - 2",
+      cut_with_ellipsis(test_string, #test_string - 2),
+      "test long s..."
+    )
+
+  ensure_equals(
+      "test with string length - 3",
+      cut_with_ellipsis(test_string, #test_string - 3),
+      "test long ..."
+    )
+
+  ensure_equals(
+      "test with string with excess max length",
+      cut_with_ellipsis(test_string, #test_string + 50),
+      test_string
+    )
+
+  ensure_equals(
+      "test with string with default max length",
+      cut_with_ellipsis(test_string),
+      test_string
+    )
+
+  ensure_equals(
+      "test with cutting long string",
+      cut_with_ellipsis(test_string, 12),
+      "test long..."
+    )
+
+  ensure_equals(
+      "test with max length = 1",
+      cut_with_ellipsis(test_string, 1),
+      "t"
+    )
+
+  ensure_equals(
+      "test with max length = 2",
+      cut_with_ellipsis(test_string, 2),
+      "te"
+    )
+
+  ensure_equals(
+      "test with max length = 3",
+      cut_with_ellipsis(test_string, 3),
+      "tes"
+    )
+
+  ensure_equals(
+      "test with max length = 4",
+      cut_with_ellipsis(test_string, 4),
+      "t..."
+    )
+
+  ensure_equals(
+      "test with empty string",
+      cut_with_ellipsis(""),
+      ""
+    )
+
+  ensure_fails_with_substring(
+      "test with non-positive required string length",
+      function()
+        cut_with_ellipsis(test_string, 0)
+      end,
+      "required string length must be positive"
     )
 end)
 
