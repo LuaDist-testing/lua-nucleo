@@ -47,6 +47,8 @@ local make_concatter,
       url_encode,
       integer_to_string_with_base,
       cut_with_ellipsis,
+      number_to_string,
+      serialize_number,
       string_exports
       = import 'lua-nucleo/string.lua'
       {
@@ -70,8 +72,12 @@ local make_concatter,
         'create_escape_subst',
         'url_encode',
         'integer_to_string_with_base',
-        'cut_with_ellipsis'
+        'cut_with_ellipsis',
+        'number_to_string',
+        'serialize_number'
       }
+
+local math_pi = math.pi
 
 --------------------------------------------------------------------------------
 
@@ -275,6 +281,39 @@ string(46) "A &apos;quote&apos; is &lt;b&gt;bold&lt;/b&gt;"
 ]]
 
   ensure_strequals("escaped", table.concat(buf), expected)
+end)
+
+--------------------------------------------------------------------------------
+
+test:tests_for "escape_lua_pattern"
+
+test "escape_lua_pattern-basic" (function ()
+  ensure_strequals(
+      "escapinng lua pattern",
+      escape_lua_pattern("abc^$()%.[]*+-?\0xyz"),
+      "abc%^%$%(%)%%%.%[%]%*%+%-%?%zxyz"
+    )
+  ensure_strequals(
+      "no escapinng",
+      escape_lua_pattern("just normal string 12345"),
+      "just normal string 12345"
+    )
+end)
+
+test "escape_lua_pattern-find" (function ()
+  local cat, concat = make_concatter()
+  for i = 0, 255 do
+    cat(string.char(i))
+  end
+  local input_string = concat() -- contains all possible symbols
+
+  for i = 0, 255 do -- check all possible symbols
+    local char = string.char(i)
+    local i_start, i_end = input_string:find(escape_lua_pattern(char))
+    ensure("match for " .. char .. " is found", i_start)
+    ensure_equals("match for " .. char .. " is one symbol", i_start, i_end)
+    ensure_equals("position for " .. char .. " is correct", i_start, i + 1)
+  end
 end)
 
 --------------------------------------------------------------------------------
@@ -489,6 +528,73 @@ end)
 
 --------------------------------------------------------------------------------
 
+test:test_for "number_to_string" (function ()
+  ensure_strequals("inf", number_to_string(1/0), "1/0")
+  ensure_strequals("-inf", number_to_string(-1/0), "-1/0")
+  ensure_strequals("nan", number_to_string(0/0), "0/0")
+end)
+
+test:test_for "serialize_number" (function ()
+  ensure_strequals("inf", serialize_number( 1/0), "1/0")
+  ensure_strequals("-inf", serialize_number(-1/0), "-1/0")
+  ensure_strequals("nan", serialize_number(0/0), "0/0")
+  ensure_strequals("123", serialize_number(123), "123")
+
+  local pi_15 = loadstring("return " .. ("%.15g"):format(math_pi))()
+  local pi_16 = loadstring("return " .. ("%.16g"):format(math_pi))()
+  local pi_17 = loadstring("return " .. serialize_number(math_pi))()
+  local pi_18 = loadstring("return " .. ("%.18g"):format(math_pi))()
+  local pi_55 = loadstring("return " .. ("%.55g"):format(math_pi))()
+  ensure(
+      "serialize pi by %.15g",
+      pi_15 ~= math.pi
+    )
+  ensure(
+      "serialize pi by %.16g",
+      pi_16 == math.pi
+    )
+  ensure(
+      "serialize pi by %.17g",
+      pi_17 == math.pi
+    )
+  ensure(
+      "serialize pi by %.18g",
+      pi_18 == math.pi
+    )
+  ensure(
+      "serialize pi by %.55g",
+      pi_55 == math.pi
+    )
+
+  local one_third_15 = loadstring("return " .. ("%.15g"):format(1/3))()
+  local one_third_16 = loadstring("return " .. ("%.16g"):format(1/3))()
+  local one_third_17 = loadstring("return " .. serialize_number(1/3))()
+  local one_third_18 = loadstring("return " .. ("%.18g"):format(1/3))()
+  local one_third_55 = loadstring("return " .. ("%.55g"):format(1/3))()
+  ensure(
+      "serialize 1/3 by %.15g",
+      one_third_15 ~= 1/3
+    )
+  ensure(
+      "serialize 1/3 by %.16g",
+      one_third_16 == 1/3
+    )
+  ensure(
+      "serialize 1/3 by %.17g",
+      one_third_17 == 1/3
+    )
+  ensure(
+      "serialize 1/3 by %.18g",
+      one_third_18 == 1/3
+    )
+  ensure(
+      "serialize 1/3 by %.55g",
+      one_third_55 == 1/3
+    )
+    end)
+
+--------------------------------------------------------------------------------
+
 test:UNTESTED 'fill_placeholders_ex'
 
 test:UNTESTED 'fill_curly_placeholders'
@@ -501,10 +607,6 @@ test:UNTESTED 'count_substrings'
 
 test:UNTESTED 'kv_concat'
 
-test:UNTESTED 'escape_lua_pattern'
-
 test:UNTESTED 'escape_for_json'
-
---------------------------------------------------------------------------------
 
 assert(test:run())
