@@ -386,6 +386,10 @@ return
   {
     { "lua-nucleo/tdeepequals.lua", w = 0 };
   };
+  less_than =
+  {
+    { "lua-nucleo/functional.lua", w = 0 };
+  };
   list_caller =
   {
     { "lua-nucleo/functional.lua", w = 0 };
@@ -458,9 +462,17 @@ return
   {
     { "lua-nucleo/log.lua", w = 0 };
   };
+  make_ophash_key_value_store =
+  {
+    { "lua-nucleo/key_value_store/key_value_store_ophash.lua", w = 0 };
+  };
   make_ordered_named_cat_manager =
   {
     { "lua-nucleo/ordered_named_cat_manager.lua", w = 0 };
+  };
+  make_path_based_walker =
+  {
+    { "lua-nucleo/dsl/path_based_walker.lua", w = 0 };
   };
   make_prettifier =
   {
@@ -473,6 +485,14 @@ return
   make_scoped_cat_tree_manager =
   {
     { "lua-nucleo/scoped_cat_tree_manager.lua", w = 0 };
+  };
+  make_simple_key_value_store =
+  {
+    { "lua-nucleo/key_value_store/key_value_store_simple.lua", w = 0 };
+  };
+  make_sophisticated_key_value_store =
+  {
+    { "lua-nucleo/key_value_store/key_value_store_sophisticated.lua", w = 0 };
   };
   make_stack_with_factory =
   {
@@ -517,6 +537,10 @@ return
   pick_one =
   {
     { "lua-nucleo/algorithm.lua", w = 0 };
+  };
+  quicksort =
+  {
+    { "lua-nucleo/quicksort.lua", w = 0 };
   };
   remove_nil_arguments =
   {
@@ -689,6 +713,10 @@ return
   tiwalker =
   {
     { "lua-nucleo/table-utils.lua", w = 0 };
+  };
+  tjson_simple =
+  {
+    { "lua-nucleo/string.lua", w = 0 };
   };
   tkeys =
   {

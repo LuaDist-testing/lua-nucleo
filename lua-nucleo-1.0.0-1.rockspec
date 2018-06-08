@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "lua-nucleo"
-version = "0.1.0-1"
+version = "1.0.0-1"
 -- LuaDist source
 source = {
-  tag = "0.1.0-1",
+  tag = "1.0.0-1",
   url = "git://github.com/LuaDist-testing/lua-nucleo.git"
 }
 -- Original source
 -- source = {
 --    url = "git://github.com/lua-nucleo/lua-nucleo.git",
---    branch = "v0.1.0"
+--    branch = "v1.0.0"
 -- }
 description = {
    summary = "A random collection of core and utility level Lua libraries",
@@ -39,6 +39,7 @@ build = {
          ["lua-nucleo.dsl.common_load_schema"] = "lua-nucleo/dsl/common_load_schema.lua";
          ["lua-nucleo.dsl.dsl_loader"] = "lua-nucleo/dsl/dsl_loader.lua";
          ["lua-nucleo.dsl.dump_nodes"] = "lua-nucleo/dsl/dump_nodes.lua";
+         ["lua-nucleo.dsl.path_based_walker"] = "lua-nucleo/dsl/path_based_walker.lua";
          ["lua-nucleo.dsl.tagged-tree"] = "lua-nucleo/dsl/tagged-tree.lua";
          ["lua-nucleo.dsl.walk_data_with_schema"] = "lua-nucleo/dsl/walk_data_with_schema.lua";
          ["lua-nucleo.ensure"] = "lua-nucleo/ensure.lua";
@@ -46,6 +47,9 @@ build = {
          ["lua-nucleo.functional"] = "lua-nucleo/functional.lua";
          ["lua-nucleo.import"] = "lua-nucleo/import.lua";
          ["lua-nucleo.init"] = "lua-nucleo/init.lua";
+         ["lua-nucleo.key_value_store.key_value_store_ophash"] = "lua-nucleo/key_value_store/key_value_store_ophash.lua";
+         ["lua-nucleo.key_value_store.key_value_store_simple"] = "lua-nucleo/key_value_store/key_value_store_simple.lua";
+         ["lua-nucleo.key_value_store.key_value_store_sophisticated"] = "lua-nucleo/key_value_store/key_value_store_sophisticated.lua";
          ["lua-nucleo.language"] = "lua-nucleo/language.lua";
          ["lua-nucleo.log"] = "lua-nucleo/log.lua";
          ["lua-nucleo.math"] = "lua-nucleo/math.lua";
@@ -55,6 +59,7 @@ build = {
          ["lua-nucleo.pcall"] = "lua-nucleo/pcall.lua";
          ["lua-nucleo.prettifier"] = "lua-nucleo/prettifier.lua";
          ["lua-nucleo.priority_queue"] = "lua-nucleo/priority_queue.lua";
+         ["lua-nucleo.quicksort"] = "lua-nucleo/quicksort.lua";
          ["lua-nucleo.random"] = "lua-nucleo/random.lua";
          ["lua-nucleo.require_and_declare"] = "lua-nucleo/require_and_declare.lua";
          ["lua-nucleo.sandbox"] = "lua-nucleo/sandbox.lua";

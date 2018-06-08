@@ -91,6 +91,14 @@ return
     path = 'test/suite/0171-suite-full.lua';
   };
   {
+    type = 'suite';
+    path = 'test/suite/0172-suite-skip-slow.lua';
+  };
+  {
+    type = 'suite';
+    path = 'test/suite/0173-filter-test-names.lua';
+  };
+  {
     type = 'cases';
     path = 'test/cases/0180-table.lua';
   };
@@ -257,5 +265,25 @@ return
   {
     type = 'cases';
     path = 'test/cases/0510-dsl-walk_data_with_schema.lua';
+  };
+  {
+    type = 'cases';
+    path = 'test/cases/0520-dsl-path_based_walker.lua';
+  };
+  {
+    type = 'cases';
+    path = 'test/cases/0610-key_value_store_ophash.lua';
+  };
+  {
+    type = 'cases';
+    path = 'test/cases/0620-key_value_store_simple.lua';
+  };
+  {
+    type = 'cases';
+    path = 'test/cases/0630-key_value_store_sophisticated.lua';
+  };
+  {
+    type = 'cases';
+    path = 'test/cases/0640-quicksort.lua';
   };
 }
