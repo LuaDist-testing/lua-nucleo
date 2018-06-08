@@ -22,6 +22,10 @@ Installation
 If you're in a require-friendly environment, you may install lua-nucleo
 from luarocks (http://www.luarocks.org):
 
+    luarocks install lua-nucleo
+
+Or, if you want to get the most current code, use rocks-cvs version:
+
     luarocks install \
         lua-nucleo \
         --from=http://luarocks.org/repositories/rocks-cvs
@@ -57,7 +61,7 @@ with
 Initialization without require()
 --------------------------------
 
-Set `CODE_ROOT` to path to lua-nucleo directory.
+Set `CODE_ROOT` Lua variable to path to lua-nucleo directory.
 
     dofile(CODE_ROOT..'lua-nucleo/strict.lua')
     assert(loadfile(CODE_ROOT..'lua-nucleo/import.lua'))(CODE_ROOT)

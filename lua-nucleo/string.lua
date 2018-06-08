@@ -4,7 +4,7 @@
 
 local table_concat, table_insert = table.concat, table.insert
 local string_find, string_sub = string.find, string.sub
-local assert = assert
+local assert, pairs = assert, pairs
 
 local make_concatter -- TODO: rename, is not factory
 do
@@ -54,10 +54,6 @@ do
   htmlspecialchars = function(value)
     return (value:gsub("[&\"'<>]", subst))
   end
-end
-
-local fill_placeholders = function(str, dict)
-  return (str:gsub("%$%((.-)%)", dict))
 end
 
 local cdata_wrap = function(value)
@@ -113,8 +109,52 @@ local split_by_offset = function(str, offset, skip_right)
   return str:sub(1, offset), str:sub(offset + 1 + (skip_right or 0))
 end
 
+local fill_placeholders_ex = function(capture, str, dict)
+  return (str:gsub(capture, dict))
+end
+
+local fill_placeholders = function(str, dict)
+  return fill_placeholders_ex("%$%((.-)%)", str, dict)
+end
+
 local fill_curly_placeholders = function(str, dict)
-  return (str:gsub("%${(.-)}", dict))
+  return fill_placeholders_ex("%${(.-)}", str, dict)
+end
+
+local kv_concat = function(t, kv_glue, pair_glue, pairs_fn)
+  pair_glue = pair_glue or ""
+  pairs_fn = pairs_fn or pairs
+
+  local cat, concat = make_concatter()
+  local glue = ""
+  for k, v in pairs_fn(t) do
+    cat (glue) (k) (kv_glue) (v)
+    glue = pair_glue
+  end
+  return concat()
+end
+
+local escape_lua_pattern
+do
+  local matches =
+  {
+    ["^"] = "%^";
+    ["$"] = "%$";
+    ["("] = "%(";
+    [")"] = "%)";
+    ["%"] = "%%";
+    ["."] = "%.";
+    ["["] = "%[";
+    ["]"] = "%]";
+    ["*"] = "%*";
+    ["+"] = "%+";
+    ["-"] = "%-";
+    ["?"] = "%?";
+  }
+
+  escape_lua_pattern = function(s)
+    return (s:gsub(".", matches))
+  end
 end
 
 return
@@ -123,6 +163,7 @@ return
   make_concatter = make_concatter;
   trim = trim;
   htmlspecialchars = htmlspecialchars;
+  fill_placeholders_ex = fill_placeholders_ex;
   fill_placeholders = fill_placeholders;
   fill_curly_placeholders = fill_curly_placeholders;
   cdata_wrap = cdata_wrap;
@@ -130,4 +171,6 @@ return
   split_by_char = split_by_char;
   split_by_offset = split_by_offset;
   count_substrings = count_substrings;
+  kv_concat = kv_concat;
+  escape_lua_pattern = escape_lua_pattern;
 }

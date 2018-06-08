@@ -26,6 +26,7 @@ local make_concatter,
       trim,
       escape_string,
       htmlspecialchars,
+      fill_placeholders_ex,
       fill_placeholders,
       fill_curly_placeholders,
       cdata_wrap,
@@ -33,6 +34,8 @@ local make_concatter,
       split_by_char,
       split_by_offset,
       count_substrings,
+      kv_concat,
+      escape_lua_pattern,
       string_exports
       = import 'lua-nucleo/string.lua'
       {
@@ -40,13 +43,16 @@ local make_concatter,
         'trim',
         'escape_string',
         'htmlspecialchars',
+        'fill_placeholders_ex',
         'fill_placeholders',
         'fill_curly_placeholders',
         'cdata_wrap',
         'cdata_cat',
         'split_by_char',
         'split_by_offset',
-        'count_substrings'
+        'count_substrings',
+        'kv_concat',
+        'escape_lua_pattern'
       }
 
 --------------------------------------------------------------------------------
@@ -210,6 +216,8 @@ end)
 
 --------------------------------------------------------------------------------
 
+test:UNTESTED 'fill_placeholders_ex'
+
 test:UNTESTED 'fill_curly_placeholders'
 
 test:UNTESTED 'split_by_char'
@@ -217,6 +225,10 @@ test:UNTESTED 'split_by_char'
 test:UNTESTED 'split_by_offset'
 
 test:UNTESTED 'count_substrings'
+
+test:UNTESTED 'kv_concat'
+
+test:UNTESTED 'escape_lua_pattern'
 
 --------------------------------------------------------------------------------
 

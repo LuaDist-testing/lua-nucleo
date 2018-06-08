@@ -1,5 +1,5 @@
 package = "lua-nucleo"
-version = "scm-1"
+version = "banner-1"
 source = {
    url = "git://github.com/lua-nucleo/lua-nucleo.git",
    branch = "master"
@@ -40,7 +40,6 @@ build = {
          ["lua-nucleo.prettifier"] = "lua-nucleo/prettifier.lua";
          ["lua-nucleo.priority_queue"] = "lua-nucleo/priority_queue.lua";
          ["lua-nucleo.random"] = "lua-nucleo/random.lua";
-         ["lua-nucleo.require_and_declare"] = "lua-nucleo/require_and_declare.lua";
          ["lua-nucleo.sandbox"] = "lua-nucleo/sandbox.lua";
          ["lua-nucleo.scoped_cat_tree_manager"] = "lua-nucleo/scoped_cat_tree_manager.lua";
          ["lua-nucleo.stack_with_factory"] = "lua-nucleo/stack_with_factory.lua";

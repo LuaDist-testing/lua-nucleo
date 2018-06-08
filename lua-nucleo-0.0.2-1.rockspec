@@ -1,9 +1,17 @@
+-- This file was automatically generated for the LuaDist project.
+
 package = "lua-nucleo"
-version = "scm-1"
+version = "0.0.2-1"
+-- LuaDist source
 source = {
-   url = "git://github.com/lua-nucleo/lua-nucleo.git",
-   branch = "master"
+  tag = "0.0.2-1",
+  url = "git://github.com/LuaDist-testing/lua-nucleo.git"
 }
+-- Original source
+-- source = {
+--    url = "git://github.com/lua-nucleo/lua-nucleo.git",
+--    branch = "v0.0.2"
+-- }
 description = {
    summary = "A random collection of core and utility level Lua libraries",
    homepage = "http://github.com/lua-nucleo/lua-nucleo",
