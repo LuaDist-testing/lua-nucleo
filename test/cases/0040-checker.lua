@@ -8,6 +8,7 @@ local make_suite = assert(loadfile('test/test-lib/init/strict.lua'))(...)
 
 local ensure,
       ensure_equals,
+      ensure_strequals,
       ensure_tequals,
       ensure_returns,
       ensure_fails_with_substring
@@ -15,6 +16,7 @@ local ensure,
       {
         'ensure',
         'ensure_equals',
+        'ensure_strequals',
         'ensure_tequals',
         'ensure_returns',
         'ensure_fails_with_substring'
@@ -150,6 +152,38 @@ test "ensure-fails-no-third-argument" (function()
   ensure_returns("1: result custom", 2, { nil, "p:my message 1: (no additional error message)" }, checker:result("p:", ":s"))
 end)
 
---------------------------------------------------------------------------------
+test "smart-messages" (function()
+  local smart_msg = function(msg)
+    return setmetatable(
+        { },
+        {
+          __tostring = function() return msg end;
+          __concat = function(lhs, rhs)
+            return tostring(lhs) .. tostring(rhs)
+          end;
+        }
+      )
+  end
 
-assert(test:run())
+  local checker = make_checker()
+
+  checker:fail("alpha")
+  checker:fail(smart_msg("beta"))
+  checker:ensure("gamma", false)
+  checker:ensure(smart_msg("delta"), false)
+  checker:ensure(smart_msg("epsilon"), false, smart_msg("zeta"))
+  checker:ensure("eta", true)
+  checker:ensure(smart_msg("theta"), true)
+
+  ensure_strequals(
+      "smart-messages are rendered as expected",
+      checker:msg(),
+[[
+
+alpha
+beta
+gamma: (no additional error message)
+delta: (no additional error message)
+epsilon: zeta]]
+    )
+end)

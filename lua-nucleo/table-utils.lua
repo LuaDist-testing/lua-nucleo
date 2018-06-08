@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- table-utils.lua: small table utilities
+--- Small table utilities
+-- @module lua-nucleo.table-utils
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local setmetatable, error, pairs, ipairs, tostring, select, type, assert
@@ -25,9 +26,11 @@ local arguments,
         'method_arguments'
       }
 
-local is_table
+local is_number, 
+      is_table
       = import 'lua-nucleo/type.lua'
       {
+        'is_number',
         'is_table'
       }
 
@@ -835,6 +838,42 @@ local tkvmap_unpack = function(fn, t, ...)
   end
   return unpack(r)
 end
+
+local tkvlist_to_hash = function(t)
+  local r = { }
+  for i = 1, #t, 2 do
+    r[t[i]] = t[i + 1]
+  end
+  return r
+end
+
+local tmerge_many = function(...)
+  return toverride_many({ }, ...)
+end
+
+-- Returns true is a table is an array
+-- Returns false otherwise
+-- Note the empty table is treated as an array
+local tisarray = function(t)
+  for k, _ in pairs(t) do
+    if 
+      -- Array keys should be numbers...
+      not is_number(k) 
+      -- ...greater than 1...
+      or k < 1 
+      -- ...in a continuous sequence...
+      or (k > 1 and t[k - 1] == nil) 
+      -- ...of integers...
+      or k % 1 ~= 0 
+      -- ...avoiding floating point overflow 
+      or k == k - 1
+    then
+      return false
+    end
+  end
+  return true  
+end
+
 --------------------------------------------------------------------------------
 
 return
@@ -851,6 +890,7 @@ return
   tiflip = tiflip;
   tset = tset;
   tiset = tiset;
+  tisarray = tisarray;
   tiinsert_args = tiinsert_args;
   timap_inplace = timap_inplace;
   timap = timap;
@@ -899,4 +939,6 @@ return
   tisempty = tisempty;
   tifindvalue_nonrecursive = tifindvalue_nonrecursive;
   tkvmap_unpack = tkvmap_unpack;
+  tkvlist_to_hash = tkvlist_to_hash;
+  tmerge_many = tmerge_many;
 }

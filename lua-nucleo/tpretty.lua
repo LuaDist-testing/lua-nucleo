@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- tpretty.lua: pretty visualization of non-recursive tables.
+--- Pretty visualization of non-recursive tables.
+-- @module lua-nucleo.tpretty
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local pairs, ipairs, type, tostring = pairs, ipairs, type, tostring
@@ -11,14 +12,15 @@ local string_match, string_format = string.match, string.format
 local lua51_keywords = import 'lua-nucleo/language.lua' { 'lua51_keywords' }
 local make_prettifier = import 'lua-nucleo/prettifier.lua' { 'make_prettifier' }
 local is_table = import 'lua-nucleo/type.lua' { 'is_table' }
-local tstr = import 'lua-nucleo/table.lua' { 'tstr' }
+local tstr = import 'lua-nucleo/tstr.lua' { 'tstr' }
 local arguments = import 'lua-nucleo/args.lua' { 'arguments' }
 local number_to_string = import 'lua-nucleo/string.lua' { 'number_to_string' }
+local ordered_pairs = import 'lua-nucleo/tdeepequals.lua' { 'ordered_pairs' }
 
-local tpretty
+local tpretty_ex, tpretty, tpretty_ordered
 do
   local add = ""
-  local function impl(t, cat, prettifier, visited)
+  local function impl(iterator, t, cat, prettifier, visited)
     local t_type = type(t)
     if t_type == "table" then
       if not visited[t] then
@@ -33,7 +35,7 @@ do
           if i > 1 then -- TODO: Move condition out of the loop
             prettifier:separator()
           end
-          impl(v, cat, prettifier, visited)
+          impl(iterator, v, cat, prettifier, visited)
           next_i = i
         end
 
@@ -42,7 +44,7 @@ do
         -- Serialize hash part
         -- Skipping comma only at first element if there is no numeric part.
         local need_comma = (next_i > 1)
-        for k, v in pairs(t) do
+        for k, v in iterator(t) do
           local k_type = type(k)
           if k_type == "string" then
             if need_comma then
@@ -58,7 +60,7 @@ do
               cat(string_format("[%q]", k))
             end
             prettifier:value_start()
-            impl(v, cat, prettifier, visited)
+            impl(iterator, v, cat, prettifier, visited)
             prettifier:key_value_finish()
           else
             if
@@ -72,10 +74,10 @@ do
               need_comma = true
               prettifier:key_start()
               cat("[")
-              impl(k, cat, prettifier, visited)
+              impl(iterator, k, cat, prettifier, visited)
               cat("]")
               prettifier:value_start()
-              impl(v, cat, prettifier, visited)
+              impl(iterator, v, cat, prettifier, visited)
               prettifier:key_value_finish()
             end
           end
@@ -99,7 +101,7 @@ do
     end
   end
 
-  tpretty = function(t, indent, cols)
+  tpretty_ex = function(iterator, t, indent, cols)
     indent = indent or "  "
     cols = cols or 80 --standard screen width
 
@@ -109,6 +111,7 @@ do
 
     arguments(
         -- all arguments should be listed, even though t is checked before
+        "function", iterator,
         --"table", t
         "string", indent,
         "number", cols
@@ -120,13 +123,23 @@ do
     -- is used instead of make_concatter
     local cat = function(v) buf[#buf + 1] = v end
     local pr = make_prettifier(indent, buf, cols)
-    impl(t, cat, pr, {})
+    impl(iterator, t, cat, pr, {})
     pr:finished()
     return table_concat(buf)
+  end
+
+  tpretty = function(t, indent, cols)
+    return tpretty_ex(pairs, t, indent, cols)
+  end
+
+  tpretty_ordered = function(t, indent, cols)
+    return tpretty_ex(ordered_pairs, t, indent, cols)
   end
 end
 
 return
 {
+  tpretty_ex = tpretty_ex;
   tpretty = tpretty;
+  tpretty_ordered = tpretty_ordered;
 }

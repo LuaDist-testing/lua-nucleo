@@ -12,6 +12,3 @@ local test = make_suite("expected-error-suite")
 test "test-expected-error" (function() 
   error("expected error")
 end)
-
-assert(test:run())
-

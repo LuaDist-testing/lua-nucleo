@@ -1,13 +1,15 @@
 --------------------------------------------------------------------------------
--- string.lua: string-related tools
+--- String-related tools
+-- @module lua-nucleo.string
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local table_concat, table_insert = table.concat, table.insert
 local math_floor = math.floor
 local string_find, string_sub, string_format = string.find, string.sub, string.format
-local assert, pairs = assert, pairs
+local string_byte, string_char = string.byte, string.char
+local assert, pairs, type = assert, pairs, type
 
 local tidentityset
       = import 'lua-nucleo/table-utils.lua'
@@ -24,7 +26,7 @@ local arguments
 local make_concatter -- TODO: rename, is not factory
 do
   make_concatter = function()
-    local buf = {}
+    local buf = { }
 
     local function cat(v)
       buf[#buf + 1] = v
@@ -108,32 +110,56 @@ local cdata_cat = function(cat, value)
   cat '<![CDATA[' (value:gsub("]]>", ']]]]><![CDATA[>')) ']]>'
 end
 
+--- Split a string by char.
+--
+-- Returns an array of strings, each of which is a substring of string formed by
+-- splitting it on boundaries formed by the char delimiter.
+--
 -- TODO: Looks ugly and slow. Rewrite.
+-- #21
+--
 -- Based on http://lua-users.org/wiki/MakingLuaLikePhp
-local split_by_char = function(str, div)
-  local result = false
-  if div ~= "" then
-    local pos = 0
-    result = {}
+-- @tparam string str Input string
+-- @tparam string delimiter Boundary char
+-- @treturn table Returns an array of strings created by splitting the string
+--   parameter on boundaries formed by the delimiter
+local split_by_char = function(str, delimiter)
+  assert(type(str) == "string", "Param str must be a string")
+  assert(
+      type(delimiter) == "string" and #delimiter == 1,
+      "Invalid delimiter"
+    )
 
-    if str ~= "" then
-      -- for each divider found
-      for st, sp in function() return string_find(str, div, pos, true) end do
-        -- Attach chars left of current divider
-        table_insert(result, string_sub(str, pos, st - 1))
-        pos = sp + 1 -- Jump past current divider
-      end
-      -- Attach chars right of last divider
-      table_insert(result, string_sub(str, pos))
-    end
+  if str == "" then
+    return { }
   end
+  
+  local result = { }
+  local pos = 0
+
+  -- for each delimiter found
+  for st, sp in function() return string_find(str, delimiter, pos, true) end do
+    -- Attach chars left of current delimiter
+    table_insert(result, string_sub(str, pos, st - 1))
+    pos = sp + 1 -- Jump past current delimiter
+  end
+  -- Attach chars right of last delimiter
+  table_insert(result, string_sub(str, pos))
+
   return result
 end
 
+--- Count the number of substring occurrences.
+-- @tparam string str The string to search in
+-- @tparam string substr The substring to search for, must be not empty
+-- @treturn number Returns the number of substring occurrences
 local count_substrings = function(str, substr)
-  local count = 0
+  -- Check substring length to prevent infinite loop
+  assert(#substr > 0, "substring must be not empty")
 
-  local s, e = 0, 0
+  -- Main calculation loop
+  local count = 0
+  local s, e = nil, 0
   while true do
     s, e = str:find(substr, e + 1, true)
     if s ~= nil then
@@ -146,23 +172,63 @@ local count_substrings = function(str, substr)
   return count
 end
 
+--- Split a string into two parts at offset.
+-- @tparam string str Input string
+-- @tparam number offset Offset at which string will be splitted
+-- @treturn table Returns two strings, the first one - is to the left from offset
+--   and the second one to the right from offset
 local split_by_offset = function(str, offset, skip_right)
-  assert(offset <= #str)
+  assert(offset <= #str, "offset greater than str length")
   return str:sub(1, offset), str:sub(offset + 1 + (skip_right or 0))
 end
 
+--- Expands variables in input string matched by capture string with values
+-- from dictionary.
+-- @tparam string capture Variable matching expression
+-- @tparam string str Input string, containing variables to expand
+-- @tparam table dict Dictionary, containing variables's values
+-- @treturn string A result string, where variables substituted with values
+-- @usage Universal value substitution to any placeholder, for example:
+--   fill_placeholders_ex("%$%((.-)%)", "a = $(a)", { a = 42 })
+--   returns "a = 42"
+-- @see fill_placeholders
+-- @see fill_curly_placeholders
 local fill_placeholders_ex = function(capture, str, dict)
   return (str:gsub(capture, dict))
 end
 
+--- Expands variables like $(varname) with values from dictionary.
+-- @tparam string str Input string, containing variables to expand
+-- @tparam table dict Dictionary, containing variables's values
+-- @treturn string A result string, where variables substituted with values
+-- @usage fill_placeholders("a = $(a)", { a = 42 })
+--   returns "a = 42"
 local fill_placeholders = function(str, dict)
   return fill_placeholders_ex("%$%((.-)%)", str, dict)
 end
 
+--- Expands variables like ${varname} with values from dictionary.
+-- @tparam string str Input string, containing variables to expand
+-- @tparam table dict Dictionary, containing variables's values
+-- @treturn string A result string, where variables substituted with values
+-- @usage fill_placeholders("a = ${a}", { a = 42 })
+--   returns "a = 42"
 local fill_curly_placeholders = function(str, dict)
   return fill_placeholders_ex("%${(.-)}", str, dict)
 end
 
+--- Convert non-hierarchical table into string.
+--
+-- Values of key and value are concatted using custom glue `kv_glue`.
+-- Allowed values for key and value are numbers and strings.
+-- Pairs are concatted using custom glue `pair_glue`.
+-- Table can be traversed using custom iterator `pairs_fn`.
+-- @tparam table t Non-hierarchical table with [key]=value pairs
+-- @tparam string kv_glue Glue between key and value
+-- @tparam string pair_glue Glue between pairs (defaut: "")
+-- @tparam function pairs_fn Table iterator (default: pairs)
+-- @treturn string A result string
+-- @usage kv_concat({a = 1, b = 2}, " => ", "; ", pairs)
 local kv_concat = function(t, kv_glue, pair_glue, pairs_fn)
   pair_glue = pair_glue or ""
   pairs_fn = pairs_fn or pairs
@@ -342,6 +408,61 @@ do
   end
 end
 
+local get_escaped_chars_in_ranges
+do
+  --- Returns '%'-separated character string.
+  -- @param ranges If range[i], range[i+1] are numbers, concats all chars ('%'
+  -- separated) from char with ranges[1] code to char with ranges[2] code,
+  -- concats it to same way to ranges[3] - ranges[4], and so on.
+  --
+  -- If range[i], range[i+1] are strings,
+  -- ignore all string chars but first, and
+  -- concats all chars ('%' separated) from ranges[1][1] to ranges[2][1],
+  -- concats it to ranges[3][1] - ranges[4][1], and so on.
+  --
+  -- If range[i], range[i+1] are different types, also works fine, for example:
+  -- get_escaped_chars_in_ranges({"0",50}) returns "%0%1%2".
+  -- @treturn string Returns '%'-separated character string.
+  -- @local here
+  get_escaped_chars_in_ranges = function(ranges)
+    assert(
+        type(ranges) == "table",
+        "argument must be a table"
+      )
+
+    assert(
+        #ranges % 2 == 0,
+        "argument must have even number of elements"
+      )
+
+    local cat, concat = make_concatter()
+
+    for i = 1, #ranges, 2 do
+      local char_code_start = ranges[i]
+      local char_code_end = ranges[i + 1]
+
+      if type(char_code_start) == "string" then
+        char_code_start = string_byte(char_code_start)
+      end
+      if type(char_code_end) == "string" then
+        char_code_end = string_byte(char_code_end)
+      end
+
+      assert(
+          type(char_code_start) == "number"
+            and type(char_code_end) == "number",
+          "argument elements must be numbers or strings"
+        )
+
+      for i = char_code_start, char_code_end do
+        cat "%" (string_char(i))
+      end
+    end
+
+    return concat()
+  end
+end
+
 return
 {
   escape_string = escape_string;
@@ -367,4 +488,5 @@ return
   cut_with_ellipsis = cut_with_ellipsis;
   number_to_string = number_to_string;
   serialize_number = serialize_number;
+  get_escaped_chars_in_ranges = get_escaped_chars_in_ranges;
 }

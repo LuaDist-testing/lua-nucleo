@@ -30,6 +30,7 @@ test "ensure-everything-is-exported" (function()
     'lua-nucleo/tdeepequals.lua';
     'lua-nucleo/tserialize.lua';
     'lua-nucleo/tstr.lua';
+    'lua-nucleo/tpretty.lua';
   }
 
   local table_exports_keys = tset(tkeys(table_exports))
@@ -44,7 +45,3 @@ test "ensure-everything-is-exported" (function()
 
   ensure_equals("no extra keys are exported", next(table_exports_keys), nil)
 end)
-
---------------------------------------------------------------------------------
-
-assert(test:run())

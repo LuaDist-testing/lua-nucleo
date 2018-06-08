@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- checker.lua: complex validation helper
+--- Complex validation helper
+-- @module lua-nucleo.checker
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local assert, tostring, select = assert, tostring, select
@@ -36,6 +37,11 @@ do
   end
 
   local fail = function(self, msg)
+    -- Not masking nil msg, as it is a likely error
+    if msg ~= nil and not is_string(msg) then
+      msg = tostring(msg)
+    end
+
     assert(is_self(self))
     assert(is_string(msg))
 

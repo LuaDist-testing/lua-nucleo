@@ -16,6 +16,7 @@ local ensure,
       ensure_equals,
       ensure_strequals,
       ensure_tequals,
+      ensure_returns,
       ensure_fails_with_substring
       = import 'lua-nucleo/ensure.lua'
       {
@@ -23,6 +24,7 @@ local ensure,
         'ensure_equals',
         'ensure_strequals',
         'ensure_tequals',
+        'ensure_returns',
         'ensure_fails_with_substring'
       }
 
@@ -49,6 +51,7 @@ local make_concatter,
       cut_with_ellipsis,
       number_to_string,
       serialize_number,
+      get_escaped_chars_in_ranges,
       string_exports
       = import 'lua-nucleo/string.lua'
       {
@@ -74,10 +77,18 @@ local make_concatter,
         'integer_to_string_with_base',
         'cut_with_ellipsis',
         'number_to_string',
-        'serialize_number'
+        'serialize_number',
+        'get_escaped_chars_in_ranges'
+      }
+
+local ordered_pairs
+      = import 'lua-nucleo/tdeepequals.lua'
+      {
+        'ordered_pairs'
       }
 
 local math_pi = math.pi
+local table_concat = table.concat
 
 --------------------------------------------------------------------------------
 
@@ -158,7 +169,7 @@ test "starts_with-minimal" (function()
   ensure_equals("binary-safe", starts_with("Русский язык велик и могуч", "Русский я"), true)
   ensure_equals("against number", starts_with("foo", 1), false)
   ensure_equals("against boolean", starts_with("foo", false), false)
-  ensure_equals("against table", starts_with("foo", {}), false)
+  ensure_equals("against table", starts_with("foo", { }), false)
   ensure_equals("against nil", starts_with("foo", nil), false)
 end)
 
@@ -175,7 +186,7 @@ test "ends_with-minimal" (function()
   ensure_equals("binary-safe", ends_with("Русский язык велик и могуч", "к и могуч"), true)
   ensure_equals("against number", ends_with("foo", 1), false)
   ensure_equals("against boolean", ends_with("foo", false), false)
-  ensure_equals("against table", ends_with("foo", {}), false)
+  ensure_equals("against table", ends_with("foo", { }), false)
   ensure_equals("against nil", ends_with("foo", nil), false)
 end)
 
@@ -183,7 +194,7 @@ end)
 
 test:tests_for "escape_string"
 
-test "escape_string-minimal" (function ()
+test "escape_string-minimal" (function()
 
   ensure_equals(
        "Equal strings",
@@ -221,7 +232,7 @@ end)
 
 test:tests_for "create_escape_subst"
 
-test "create_escape_subst-minimal" (function ()
+test "create_escape_subst-minimal" (function()
   local escape_subst = create_escape_subst("\\%03d")
 
   local str_test = ""
@@ -251,10 +262,10 @@ end)
 
 test:tests_for "htmlspecialchars"
 
-test "htmlspecialchars-minimal" (function ()
+test "htmlspecialchars-minimal" (function()
   -- Uses texts from PHP 5.3.0 htmlspecialchars tests
 
-  local buf = {} -- We need special cat, not using make_concatter
+  local buf = { } -- We need special cat, not using make_concatter
   local cat = function(v)
     -- Matching var_dump for strings
     arguments("string", v)
@@ -287,7 +298,7 @@ end)
 
 test:tests_for "escape_lua_pattern"
 
-test "escape_lua_pattern-basic" (function ()
+test "escape_lua_pattern-basic" (function()
   ensure_strequals(
       "escapinng lua pattern",
       escape_lua_pattern("abc^$()%.[]*+-?\0xyz"),
@@ -300,7 +311,7 @@ test "escape_lua_pattern-basic" (function ()
     )
 end)
 
-test "escape_lua_pattern-find" (function ()
+test "escape_lua_pattern-find" (function()
   local cat, concat = make_concatter()
   for i = 0, 255 do
     cat(string.char(i))
@@ -323,7 +334,7 @@ test:tests_for 'cdata_wrap'
 
 --------------------------------------------------------------------------------
 
-test "cdata_wrap-cdata_cat" (function ()
+test "cdata_wrap-cdata_cat" (function()
   local check = function(value, expected)
     do
       local actual = cdata_wrap(value)
@@ -344,31 +355,646 @@ end)
 
 --------------------------------------------------------------------------------
 
-test:test_for "fill_placeholders" (function ()
-  ensure_strequals("both empty", fill_placeholders("", {}), "")
-  ensure_strequals("empty dict", fill_placeholders("test", {}), "test")
-  ensure_strequals("empty str", fill_placeholders("", { a = 42 }), "")
-  ensure_strequals("missing key", fill_placeholders("$(b)", { a = 42 }), "$(b)")
+test:tests_for "split_by_char"
 
-  ensure_strequals("bad format", fill_placeholders("$a", { a = 42 }), "$a")
-  ensure_strequals("missing right brace", fill_placeholders("$a)", { a = 42 }), "$a)")
-  ensure_strequals("missing left brace", fill_placeholders("$(a", { a = 42 }), "$(a")
+test "split_by_char-basic" (function()
+  ensure_fails_with_substring(
+      "both empty",
+      function()
+        split_by_char("", "")
+      end,
+      "Invalid delimiter"
+    )
+  ensure_fails_with_substring(
+      "empty delimiter",
+      function()
+        split_by_char("abc", "")
+      end,
+      "Invalid delimiter"
+    )
+  ensure_fails_with_substring(
+      "empty delimiter & bad arg type for string",
+      function()
+        split_by_char(1, "")
+      end,
+      "Param str must be a string"
+    )
 
-  ensure_strequals("ok", fill_placeholders("a = `$(a)'", { a = 42 }), "a = `42'")
-  ensure_tequals("no extra data", { fill_placeholders("a = `$(a)'", { a = 42 }) }, { "a = `42'" })
+  ensure_tequals("empty string", split_by_char("", " "), { })
 
-  ensure_strequals("extra key", fill_placeholders("a = `$(a)'", { a = 42, b = 43 }), "a = `42'")
-  ensure_strequals("two keys", fill_placeholders("`$(key)' = `$(value)'", { key = "a", value = 42 }), "`a' = `42'")
-
-  ensure_strequals("empty string key", fill_placeholders("`$()'", { [""] = 42 }), "`42'")
-
-  ensure_strequals("extra braces", fill_placeholders("$(a `$(a)')", { a = 42 }), "$(a `$(a)')")
-  ensure_strequals("extra right brace", fill_placeholders("`$(a)')", { a = 42 }), "`42')")
+  -- NOTE: Test logic for split_* based on reversability of spliting:
+  -- split_by_char("mLoremIpsum", "m") must return { "", "Lore", "Ipsu", "" }.
+  ensure_tequals(
+      "string explode",
+      split_by_char("mLoremIpsum", "m"),
+      { "", "Lore", "Ipsu", "" }
+    )
+  ensure_strequals(
+      "reversability: string implode after explode",
+      table_concat(split_by_char("mLoremIpsum", "m"), "m"),
+      "mLoremIpsum"
+    )
+  ensure_tequals("trailing delimiter", split_by_char("t ", " "), { "t", "" })
+  ensure_tequals("leading delimiter", split_by_char(" t", " "), { "", "t" })
+  ensure_tequals(
+      "leading and trailing delimiter",
+      split_by_char(" t ", " "),
+      { "", "t", "" }
+    )
+  ensure_tequals(
+      "word not divided",
+      split_by_char("Lorem!", "t"),
+      { "Lorem!" }
+    )
+  ensure_tequals(
+      "phrase with escapes",
+      split_by_char("\nLorem \tipsum?#$%^&*()_+|~/\t \001dolor \007sit\n", " "),
+      { "\nLorem", "\tipsum?#$%^&*()_+|~/\t", "\001dolor", "\007sit\n" }
+    )
+  ensure_tequals(
+      "phrase with escapes and zero",
+      split_by_char("\nLorem \tipsum?#$%^&*()_+|~/\t \0dolor \007sit.\n", " "),
+      { "\nLorem", "\tipsum?#$%^&*()_+|~/\t", "\0dolor", "\007sit.\n" }
+    )
+  ensure_fails_with_substring(
+      "space string, delimiter with escapes and zero",
+      function()
+        split_by_char(" ", "\nLorem \tipsum?#$%^&*()_+|~/\t \0dolor \007sit.\n")
+      end,
+      "Invalid delimiter"
+    )
+  ensure_fails_with_substring(
+      "empty string & delimiter with escapes and zero",
+      function()
+        split_by_char("", "\nLorem \tipsum?#$%^&*()_+|~/\t \0dolor \007sit.\n")
+      end,
+      "Invalid delimiter"
+    )
 end)
 
 --------------------------------------------------------------------------------
 
-test:test_for "url_encode" (function ()
+test:tests_for 'split_by_offset'
+
+test:test "split_by_offset-basic" (function()
+  local BASIC_STRING = "Lorem ipsum dolor sit amet"
+
+  ensure_fails_with_substring(
+      "test with offset > #str",
+      function()
+        split_by_offset(BASIC_STRING, 100)
+      end,
+      "offset greater than str length"
+    )
+  ensure_fails_with_substring(
+      "test with offset = #str+1",
+      function()
+        split_by_offset(BASIC_STRING, 1 + #BASIC_STRING)
+      end,
+      "offset greater than str length"
+    )
+  ensure_returns(
+      "offset < 0",
+      2,
+      { BASIC_STRING, BASIC_STRING },
+      split_by_offset(BASIC_STRING, -1)
+    )
+  ensure_returns(
+      "offset = 0",
+      2,
+      { "", BASIC_STRING },
+      split_by_offset(BASIC_STRING, 0)
+    )
+  ensure_returns(
+      "offset = 1",
+      2,
+      { "L", "orem ipsum dolor sit amet" },
+      split_by_offset(BASIC_STRING, 1)
+    )
+  ensure_returns(
+      "max offset",
+      2,
+      { BASIC_STRING, "" },
+      split_by_offset(BASIC_STRING, #BASIC_STRING)
+    )
+  ensure_returns(
+      "max offset and skip 0",
+      2,
+      { BASIC_STRING, "" },
+      split_by_offset(BASIC_STRING, #BASIC_STRING, 0)
+    )
+  ensure_returns(
+      "max offset and skip -2",
+      2,
+      { BASIC_STRING, "et" },
+      split_by_offset(BASIC_STRING, #BASIC_STRING, -2)
+    )
+  ensure_returns(
+      "max offset and skip -max",
+      2,
+      { BASIC_STRING, BASIC_STRING },
+      split_by_offset(BASIC_STRING, #BASIC_STRING, -#BASIC_STRING)
+    )
+  ensure_returns(
+      "max offset and skip under begin",
+      2,
+      { BASIC_STRING, BASIC_STRING },
+      split_by_offset(BASIC_STRING, #BASIC_STRING, -1 - #BASIC_STRING)
+    )
+  ensure_returns(
+      "max offset and skip max",
+      2,
+      { BASIC_STRING, "" },
+      split_by_offset(BASIC_STRING, #BASIC_STRING, 1 + #BASIC_STRING)
+    )
+  ensure_returns(
+      "offset 1 and skip 0",
+      2,
+      { "L", "orem ipsum dolor sit amet" },
+      split_by_offset(BASIC_STRING, 1, 0)
+    )
+  ensure_returns(
+      "offset 1 and skip 5",
+      2,
+      { "L", "ipsum dolor sit amet" },
+      split_by_offset(BASIC_STRING, 1, 5)
+    )
+  ensure_returns(
+      "offset 5 and skip 5",
+      2,
+      { "Lorem", "m dolor sit amet" },
+      split_by_offset(BASIC_STRING, 5, 5)
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:tests_for "fill_placeholders_ex"
+
+test "fill_placeholders_ex-basic" (function()
+  ensure_strequals(
+      "both empty",
+      fill_placeholders_ex("%$%((.-)%)", "", { }),
+      ""
+    )
+  ensure_strequals(
+      "empty dict",
+      fill_placeholders_ex("%$%((.-)%)", "test", { }),
+      "test"
+    )
+  ensure_strequals(
+      "empty str",
+      fill_placeholders_ex("%$%((.-)%)", "", { a = 42 }),
+      ""
+    )
+  ensure_strequals(
+      "missing key",
+      fill_placeholders_ex("%$%((.-)%)", "$(b)", { a = 42 }),
+      "$(b)"
+    )
+  ensure_strequals(
+      "bad format",
+      fill_placeholders_ex("%$%((.-)%)", "$a", { a = 42 }),
+      "$a"
+    )
+  ensure_strequals(
+      "missing right brace",
+      fill_placeholders_ex("%$%((.-)%)", "$a)", { a = 42 }),
+      "$a)"
+    )
+  ensure_strequals(
+      "missing left brace",
+      fill_placeholders_ex("%$%((.-)%)", "$(a", { a = 42 }),
+      "$(a"
+    )
+  ensure_strequals(
+      "proper usage",
+      fill_placeholders_ex("%$%((.-)%)", "a = `$(a)'", { a = 42 }),
+      "a = `42'"
+    )
+  ensure_tequals(
+      "check for no extra data being generated",
+      { fill_placeholders_ex("%$%((.-)%)", "a = `$(a)'", { a = 42 }) },
+      { "a = `42'" }
+    )
+  ensure_strequals(
+      "extra key",
+      fill_placeholders_ex("%$%((.-)%)", "a = `$(a)'", { a = 42, b = 43 }),
+      "a = `42'"
+    )
+  ensure_strequals(
+      "two keys",
+      fill_placeholders_ex(
+          "%$%((.-)%)", "`$(key)' = `$(value)'",
+          { key = "a", value = 42 }
+        ),
+      "`a' = `42'"
+    )
+  ensure_strequals(
+      "empty string key",
+      fill_placeholders_ex("%$%((.-)%)", "`$()'", { [""] = 42 }),
+      "`42'"
+    )
+  ensure_strequals(
+      "extra braces",
+      fill_placeholders_ex("%$%((.-)%)", "$(a `$(a)')", { a = 42 }),
+      "$(a `$(a)')"
+    )
+  ensure_strequals(
+      "extra braces pragmatic",
+      fill_placeholders_ex("%$%((.-)%)", "$(a `$(a)')", { ["a `$(a"] = 42 }),
+      "42')"
+    )
+  ensure_strequals(
+      "extra right round brace",
+      fill_placeholders_ex("%$%((.-)%)", "`$(a)')", { a = 42 }),
+      "`42')"
+    )
+  ensure_strequals(
+      "extra right curly brace",
+      fill_placeholders_ex("%$%((.-)%)", "`$(a)'}", { a = 42 }),
+      "`42'}"
+    )
+  ensure_strequals(
+      "curly: both empty",
+      fill_placeholders_ex("%${(.-)}", "", { }),
+      ""
+    )
+  ensure_strequals(
+      "curly: empty dict",
+      fill_placeholders_ex("%${(.-)}", "test", { }),
+      "test"
+    )
+  ensure_strequals(
+      "curly: empty str",
+      fill_placeholders_ex("%${(.-)}", "", { a = 42 }),
+      ""
+    )
+  ensure_strequals(
+      "curly: missing key",
+      fill_placeholders_ex("%${(.-)}", "${b}", { a = 42 }),
+      "${b}"
+    )
+  ensure_strequals(
+      "curly: bad format",
+      fill_placeholders_ex("%${(.-)}", "$a", { a = 42 }),
+      "$a"
+    )
+  ensure_strequals(
+      "curly: missing right brace",
+      fill_placeholders_ex("%${(.-)}", "$a}", { a = 42 }),
+      "$a}"
+    )
+  ensure_strequals(
+      "curly: missing left brace",
+      fill_placeholders_ex("%${(.-)}", "${a", { a = 42 }),
+      "${a"
+    )
+  ensure_strequals(
+      "curly: proper usage",
+      fill_placeholders_ex("%${(.-)}", "a = `${a}'", { a = 42 }),
+      "a = `42'"
+    )
+  ensure_tequals(
+      "curly: check for no extra data being generated",
+      { fill_placeholders_ex("%${(.-)}", "a = `${a}'", { a = 42 }) },
+      { "a = `42'" }
+    )
+  ensure_strequals(
+      "curly: extra key",
+      fill_placeholders_ex("%${(.-)}", "a = `${a}'", { a = 42, b = 43 }),
+      "a = `42'"
+    )
+  ensure_strequals(
+      "curly: two keys",
+      fill_placeholders_ex(
+          "%${(.-)}", "`${key}' = `${value}'",
+          { key = "a", value = 42 }
+        ),
+      "`a' = `42'"
+    )
+  ensure_strequals(
+      "curly: empty string key",
+      fill_placeholders_ex("%${(.-)}", "`${}'", { [""] = 42 }),
+      "`42'"
+    )
+  ensure_strequals(
+      "curly: extra braces",
+      fill_placeholders_ex("%${(.-)}", "${a `${a}'}", { a = 42 }),
+      "${a `${a}'}"
+    )
+  ensure_strequals(
+      "curly: extra braces pragmatic",
+      fill_placeholders_ex("%${(.-)}", "${a `${a}'}", { ["a `${a"] = 42 }),
+      "42'}"
+    )
+  ensure_strequals(
+      "curly: extra right brace",
+      fill_placeholders_ex("%${(.-)}", "`${a}'}", { a = 42 }),
+      "`42'}"
+    )
+  ensure_strequals(
+      "curly: extra round braces",
+      fill_placeholders_ex("%${(.-)}", "${a `${a}'}", { a = 42 }),
+      "${a `${a}'}"
+    )
+  ensure_strequals(
+      "curly: extra right curly brace",
+      fill_placeholders_ex("%${(.-)}", "`${a}'}", { a = 42 }),
+      "`42'}"
+    )
+  ensure_strequals(
+      "curly: extra right round brace",
+      fill_placeholders_ex("%${(.-)}", "`${a}')", { a = 42 }),
+      "`42')"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:test_for "fill_placeholders" (function()
+  ensure_strequals("both empty", fill_placeholders("", { }), "")
+  ensure_strequals("empty dict", fill_placeholders("test", { }), "test")
+  ensure_strequals("empty str", fill_placeholders("", { a = 42 }), "")
+  ensure_strequals(
+      "missing key",
+      fill_placeholders("$(b)", { a = 42 }),
+      "$(b)"
+    )
+
+  ensure_strequals("bad format", fill_placeholders("$a", { a = 42 }), "$a")
+  ensure_strequals(
+      "missing right brace",
+      fill_placeholders("$a)", { a = 42 }),
+      "$a)"
+    )
+  ensure_strequals(
+      "missing left brace",
+      fill_placeholders("$(a", { a = 42 }),
+      "$(a"
+    )
+
+  ensure_strequals(
+      "proper usage",
+      fill_placeholders("a = `$(a)'", { a = 42 }),
+      "a = `42'"
+    )
+  ensure_tequals(
+      "check for no extra data being generated",
+      { fill_placeholders("a = `$(a)'", { a = 42 }) },
+      { "a = `42'" }
+    )
+
+  ensure_strequals(
+      "extra key",
+      fill_placeholders("a = `$(a)'", { a = 42, b = 43 }),
+      "a = `42'"
+    )
+  ensure_strequals(
+      "two keys",
+      fill_placeholders("`$(key)' = `$(value)'", { key = "a", value = 42 }),
+      "`a' = `42'"
+    )
+
+  ensure_strequals(
+      "empty string key",
+      fill_placeholders("`$()'", { [""] = 42 }),
+      "`42'"
+    )
+
+  ensure_strequals(
+      "extra braces",
+      fill_placeholders("$(a `$(a)')", { a = 42 }),
+      "$(a `$(a)')"
+    )
+  ensure_strequals(
+      "extra braces pragmatic",
+      fill_placeholders("$(a `$(a)')", { ["a `$(a"] = 42 }),
+      "42')"
+    )
+  ensure_strequals(
+      "extra right brace",
+      fill_placeholders("`$(a)')", { a = 42 }),
+      "`42')"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:test_for "fill_curly_placeholders" (function()
+  ensure_strequals(
+      "both empty",
+      fill_curly_placeholders("", { }),
+      ""
+    )
+  ensure_strequals(
+      "empty dict",
+      fill_curly_placeholders("test", { }),
+      "test"
+    )
+  ensure_strequals(
+      "empty str",
+      fill_curly_placeholders("", { a = 42 }),
+      ""
+    )
+  ensure_strequals(
+      "missing key",
+      fill_curly_placeholders("${b}", { a = 42 }),
+      "${b}"
+    )
+  ensure_strequals(
+      "bad format",
+      fill_curly_placeholders("$a", { a = 42 }),
+      "$a"
+    )
+  ensure_strequals(
+      "missing right brace",
+      fill_curly_placeholders("$a}", { a = 42 }),
+      "$a}"
+    )
+  ensure_strequals(
+      "missing left brace",
+      fill_curly_placeholders("${a", { a = 42 }),
+      "${a"
+    )
+  ensure_strequals(
+      "proper usage",
+      fill_curly_placeholders("a = `${a}'", { a = 42 }),
+      "a = `42'"
+    )
+  ensure_tequals(
+      "check for no extra data being generated",
+      { fill_curly_placeholders("a = `${a}'", { a = 42 }) },
+      { "a = `42'" }
+    )
+  ensure_strequals(
+      "extra key",
+      fill_curly_placeholders("a = `${a}'", { a = 42, b = 43 }),
+      "a = `42'"
+    )
+  ensure_strequals(
+      "two keys",
+      fill_curly_placeholders("`${key}' = `${value}'", { key = "a", value = 42 }),
+      "`a' = `42'"
+    )
+  ensure_strequals(
+      "empty string key",
+      fill_curly_placeholders("`${}'", { [""] = 42 }),
+      "`42'"
+    )
+  ensure_strequals(
+      "extra braces",
+      fill_curly_placeholders("${a `${a}'}", { a = 42 }),
+      "${a `${a}'}"
+    )
+  ensure_strequals(
+      "extra braces pragmatic",
+      fill_curly_placeholders("${a `${a}'}", { ["a `${a"] = 42 }),
+      "42'}"
+    )
+  ensure_strequals(
+      "extra right brace",
+      fill_curly_placeholders("`${a}'}", { a = 42 }),
+      "`42'}"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:tests_for 'count_substrings'
+
+test:test "count_substrings-basic" (function()
+  local BASIC_STRING = "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+  ensure_fails_with_substring(
+      "both empty",
+      function()
+        count_substrings("", "")
+      end,
+      "substring must be not empty"
+    )
+  ensure_equals("str empty", count_substrings("", BASIC_STRING), 0)
+  ensure_fails_with_substring(
+      "substr empty",
+      function()
+        count_substrings(BASIC_STRING, "")
+      end,
+      "substring must be not empty"
+    )
+  ensure_equals("str equal substr", count_substrings("t", "t"), 1)
+  ensure_equals("zero count", count_substrings(BASIC_STRING, "est"), 0)
+  ensure_equals("positive count", count_substrings(BASIC_STRING, "o"), 4)
+  ensure_equals(
+      "positive count for word",
+      count_substrings(BASIC_STRING, "sit"),
+      1
+    )
+  ensure_equals(
+      "special character string",
+      count_substrings(
+          "\nLorem \tipsum?#$%^&*()_+|~/\t \0dolor \007sit.\n",
+          "o"
+        ),
+      3
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:tests_for 'kv_concat'
+
+test:test "kv_concat-basic" (function()
+  ensure_strequals("empty, no iterator and pairs glue", kv_concat({ }, ""), "")
+  ensure_strequals("empty, no iterator", kv_concat({ }, "", ""), "")
+  ensure_strequals("empty table, no iterator", kv_concat({ }, " ", " "), "")
+  ensure_strequals("empty table", kv_concat({ }, " ", " ", pairs), "")
+  ensure_strequals(
+      "pairs iterator",
+      kv_concat({ 3, "2", 1, "!?#$%^&*()_+|~/" }, " ", ",", pairs),
+      "1 3,2 2,3 1,4 !?#$%^&*()_+|~/"
+    )
+  ensure_strequals(
+      "ipairs iterator",
+      kv_concat({ 3, "2", 1, "!?#$%^&*()_+|~/" }, " ", ",", ipairs),
+      "1 3,2 2,3 1,4 !?#$%^&*()_+|~/"
+    )
+  ensure_strequals("empty table, ipairs", kv_concat({ }, " ", ",", ipairs), "")
+  ensure_strequals(
+      "ipairs cut not an integer indexes",
+      kv_concat({ x = 3, y = "2", 1, "!?#$%^&*()_+|~/" }, "=", ",", ipairs),
+      "1=1,2=!?#$%^&*()_+|~/"
+    )
+  -- Feature: We have to use very slow ordered_pairs() due to undefined
+  -- traversal order with regular pairs(), which can break compatibility
+  -- between Lua 5.1 and LuaJIT 2
+  ensure_strequals(
+      "2 integer 2 non-integer indexes result unorder with pairs",
+      kv_concat(
+          {x = 3, y = "2", z = 1, aaa = "!?#$%^&*()_+|~/"},
+          "=",
+          ",",
+          ordered_pairs
+        ),
+      "aaa=!?#$%^&*()_+|~/,x=3,y=2,z=1"
+    )
+  ensure_strequals(
+      "2 integer 2 non-integer indexes result unorder with pairs",
+      kv_concat({ x = 3, y = "2", 1, "!?#$%^&*()_+|~/" }, "=", ",", pairs),
+      "1=1,2=!?#$%^&*()_+|~/,y=2,x=3"
+    )
+  ensure_strequals(
+      "2 integer 2 non-integer indexes result unorder with no function",
+      kv_concat({ x = 3, y = "2", 1, "!?#$%^&*()_+|~/" }, "=", ","),
+      "1=1,2=!?#$%^&*()_+|~/,y=2,x=3"
+    )
+  -- Feature: nested tables is not allowed
+  ensure_fails_with_substring(
+      "nested tables are invalid",
+      function()
+        kv_concat({ 3, "2", { 1, "!?#$%^&*()_+|~/" } }, " ", ",", pairs)
+      end,
+      "invalid value"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:tests_for "escape_for_json"
+
+test "escape_for_json-basic" (function()
+  ensure_strequals(
+      "letters and slash",
+      escape_for_json("abcXYZs/n"),
+      "\"abcXYZs/n\""
+    )
+  ensure_strequals("slash and backslash", escape_for_json("s/\n"), "\"s/\\n\"")
+  ensure_strequals(
+      "escape sequences",
+      escape_for_json("\"s/\n\b\fu\rper\t\v"),
+      "\"\\\"s/\\n\\b\\fu\\rper\\t\\v\""
+    )
+  ensure_strequals("double backslash", escape_for_json(" \\ "), "\" \\\\ \"")
+  ensure_strequals("slash num", escape_for_json(" /007 "), "\" /007 \"")
+end)
+
+test "escape_for_json-injection" (function()
+  ensure_strequals(
+      "common json injection",
+      escape_for_json(
+          "';alert(String.fromCharCode(88,83,83))//\';alert(String.fromCharC" ..
+          "ode(88,83,83))//\";alert(String.fromCharCode(88,83,83))//\";alert" ..
+          "(String.fromCharCode(88,83,83))//--></SCRIPT>\">'><SCRIPT>alert(S" ..
+          "tring.fromCharCode(88,83,83))</SCRIPT>"
+        ),
+      "\"';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode" ..
+      "(88,83,83))//\\\";alert(String.fromCharCode(88,83,83))//\\\";alert(St" ..
+      "ring.fromCharCode(88,83,83))//--></SCRIPT>\\\">'><SCRIPT>alert(String" ..
+      ".fromCharCode(88,83,83))</SCRIPT>\""
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:test_for "url_encode" (function()
   ensure_strequals("empty", url_encode(""), "")
   ensure_strequals("simple", url_encode("test"), "test")
   ensure_strequals("test with number", url_encode("test555"), "test555")
@@ -388,7 +1014,15 @@ test:test_for "integer_to_string_with_base" (function()
   ensure_equals("test with negative numbers", integer_to_string_with_base(-11, 26), "-B")
   ensure_equals("test with zero and empty base", integer_to_string_with_base(0), "0")
   ensure_equals("test with zero and non-empty base", integer_to_string_with_base(0, 15), "0")
-  ensure_equals("test with negative zero and empty base", integer_to_string_with_base(-0), "0")
+
+  -- NOTE: integer_to_string_with_base(-0) can produce '0' or '-0', depending on
+  -- previous code. See:
+  -- http://thread.gmane.org/gmane.comp.lang.lua.general/90837/focus=90838
+  -- http://article.gmane.org/gmane.comp.lang.lua.general/12950
+  ensure(
+      "test with negative zero and empty base",
+      integer_to_string_with_base(-0) == "0" or integer_to_string_with_base(-0) == "-0"
+    )
 
   local n = 136
   local base = 36
@@ -528,13 +1162,13 @@ end)
 
 --------------------------------------------------------------------------------
 
-test:test_for "number_to_string" (function ()
+test:test_for "number_to_string" (function()
   ensure_strequals("inf", number_to_string(1/0), "1/0")
   ensure_strequals("-inf", number_to_string(-1/0), "-1/0")
   ensure_strequals("nan", number_to_string(0/0), "0/0")
 end)
 
-test:test_for "serialize_number" (function ()
+test:test_for "serialize_number" (function()
   ensure_strequals("inf", serialize_number( 1/0), "1/0")
   ensure_strequals("-inf", serialize_number(-1/0), "-1/0")
   ensure_strequals("nan", serialize_number(0/0), "0/0")
@@ -595,18 +1229,134 @@ test:test_for "serialize_number" (function ()
 
 --------------------------------------------------------------------------------
 
-test:UNTESTED 'fill_placeholders_ex'
+test:tests_for 'get_escaped_chars_in_ranges'
 
-test:UNTESTED 'fill_curly_placeholders'
+test:test "get_escaped_chars_in_ranges-basic" (function()
+  -- Invalid tests (argument errors).
+  ensure_fails_with_substring(
+      "missed argument",
+      get_escaped_chars_in_ranges,
+      "argument must be a table"
+    )
+  ensure_fails_with_substring(
+      "invalid type argument",
+      function()
+        get_escaped_chars_in_ranges("asd")
+      end,
+      "argument must be a table"
+    )
+  ensure_fails_with_substring(
+      "one element in table",
+      function()
+        get_escaped_chars_in_ranges({ "asd" })
+      end,
+      "argument must have even number of elements"
+    )
+  ensure_fails_with_substring(
+      "three elements in table",
+      function()
+        get_escaped_chars_in_ranges({ "1", "2", "3" })
+      end,
+      "argument must have even number of elements"
+    )
 
-test:UNTESTED 'split_by_char'
+  -- Valid tests:
+  -- Chars range boundaries
+  ensure_strequals("equal str", get_escaped_chars_in_ranges({ "e", "e" }), "%e")
+  ensure_strequals("equal int", get_escaped_chars_in_ranges({ "6", "6" }), "%6")
+  ensure_strequals(
+      "2 integers in string",
+      get_escaped_chars_in_ranges({ "7", "8" }),
+      "%7%8"
+    )
+  ensure_strequals(
+      "4 ints in string",
+      get_escaped_chars_in_ranges({ "7", "8", "45", "33" }),
+      "%7%8"
+    )
+  ensure_strequals(
+      "2-digit int in string",
+      get_escaped_chars_in_ranges({ "66", "77", "45", "33" }),
+      "%6%7"
+    )
+  ensure_strequals(
+      "range in int in string",
+      get_escaped_chars_in_ranges({ "22", "77", "4", "254" }),
+      "%2%3%4%5%6%7"
+    )
+  ensure_strequals(
+      "max range in int in string",
+      get_escaped_chars_in_ranges({ "0", "9", "A", "Z" }),
+      "%0%1%2%3%4%5%6%7%8%9%A%B%C%D%E%F%G%H%I%J%K%L%M%N%O%P%Q%R%S%T%U%V%W%X%Y%Z"
+    )
+  ensure_strequals(
+      "char range",
+      get_escaped_chars_in_ranges({ "a", "d", "4", "25" }),
+      "%a%b%c%d"
+    )
+  ensure_strequals(
+      "char and int in str range",
+      get_escaped_chars_in_ranges({ "a", "d", "4", "9" }),
+      "%a%b%c%d%4%5%6%7%8%9"
+    )
+  ensure_strequals(
+      "from 0 to A",
+      get_escaped_chars_in_ranges({ "0", "A" }),
+      "%0%1%2%3%4%5%6%7%8%9%:%;%<%=%>%?%@%A"
+    )
+  ensure_strequals(
+      "from space to ~",
+      get_escaped_chars_in_ranges({ " ", "~" }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%;%<%=%>%?%@%A" ..
+      "%B%C%D%E%F%G%H%I%J%K%L%M%N%O%P%Q%R%S%T%U%V%W%X%Y%Z%[%\\%]%^%_%`%a%b%c" ..
+      "%d%e%f%g%h%i%j%k%l%m%n%o%p%q%r%s%t%u%v%w%x%y%z%{%|%}%~"
+    )
 
-test:UNTESTED 'split_by_offset'
+  -- Integers range boundaries
+  ensure_strequals(
+      "integer range",
+      get_escaped_chars_in_ranges({ 32, 58 }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:"
+    )
+  ensure_strequals(
+      "from ch(32) to ch(32)",
+      get_escaped_chars_in_ranges({ 32, 126 }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%;%<%=%>%?%@%A" ..
+      "%B%C%D%E%F%G%H%I%J%K%L%M%N%O%P%Q%R%S%T%U%V%W%X%Y%Z%[%\\%]%^%_%`%a%b%c" ..
+      "%d%e%f%g%h%i%j%k%l%m%n%o%p%q%r%s%t%u%v%w%x%y%z%{%|%}%~"
+    )
 
-test:UNTESTED 'count_substrings'
+  -- Mixed range boundaries
+  ensure_strequals(
+      "all mixed up",
+      get_escaped_chars_in_ranges({ "0", 50 }),
+      "%0%1%2"
+    )
+  ensure_strequals(
+      "from ch(32) to ~",
+      get_escaped_chars_in_ranges({ 32, "~" }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%;%<%=%>%?%@%A" ..
+      "%B%C%D%E%F%G%H%I%J%K%L%M%N%O%P%Q%R%S%T%U%V%W%X%Y%Z%[%\\%]%^%_%`%a%b%c" ..
+      "%d%e%f%g%h%i%j%k%l%m%n%o%p%q%r%s%t%u%v%w%x%y%z%{%|%}%~"
+    )
+  ensure_strequals(
+      "from space to ch(126)",
+      get_escaped_chars_in_ranges({ " ", 126 }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%;%<%=%>%?%@%A" ..
+      "%B%C%D%E%F%G%H%I%J%K%L%M%N%O%P%Q%R%S%T%U%V%W%X%Y%Z%[%\\%]%^%_%`%a%b%c" ..
+      "%d%e%f%g%h%i%j%k%l%m%n%o%p%q%r%s%t%u%v%w%x%y%z%{%|%}%~"
+    )
+  ensure_strequals(
+      "integer range and letters",
+      get_escaped_chars_in_ranges({ 32, 58, "a", "h" }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%a%b%c%d%e%f%g%h"
+    )
+  ensure_strequals(
+      "all mixed up",
+      get_escaped_chars_in_ranges({ 32, 58, "a", "h", 34, 38, "0", 50 }),
+      "% %!%\"%#%$%%%&%'%(%)%*%+%,%-%.%/%0%1%2%3%4%5%6%7%8%9%:%a%b%c%d%e%f%g" ..
+      "%h%\"%#%$%%%&%0%1%2"
+    )
+end)
 
-test:UNTESTED 'kv_concat'
-
-test:UNTESTED 'escape_for_json'
-
-assert(test:run())
+--------------------------------------------------------------------------------

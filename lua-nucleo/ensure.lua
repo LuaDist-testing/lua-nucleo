@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- ensure.lua: tools to ensure correct code behaviour
+--- Tools to ensure correct code behaviour
+-- @module lua-nucleo.ensure
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local error, tostring, pcall, type, pairs, select, next
@@ -35,6 +36,7 @@ local make_checker
       }
 
 -- TODO: Write tests for this one
+--       https://github.com/lua-nucleo/lua-nucleo/issues/13
 local ensure = function(msg, value, ...)
   if not value then
     error(
@@ -47,6 +49,7 @@ local ensure = function(msg, value, ...)
 end
 
 -- TODO: Write tests for this one
+--       https://github.com/lua-nucleo/lua-nucleo/issues/13
 local ensure_equals = function(msg, actual, expected)
   return
       (actual ~= expected)
@@ -60,7 +63,22 @@ local ensure_equals = function(msg, actual, expected)
       or actual -- NOTE: Should be last to allow false and nil values.
 end
 
+local ensure_is = function(msg, value, expected_type)
+  local actual = type(value)
+  return
+      (actual ~= expected_type)
+      and error(
+          "ensure_is failed: " .. msg
+          .. ": actual type `" .. tostring(actual)
+          .. "', expected type `" .. tostring(expected_type)
+          .. "'",
+          2
+        )
+      or value -- NOTE: Should be last to allow false and nil values.
+end
+
 -- TODO: Write tests for this one
+--       https://github.com/lua-nucleo/lua-nucleo/issues/13
 local ensure_tequals = function(msg, actual, expected)
   if type(expected) ~= "table" then
     error(
@@ -229,7 +247,11 @@ local ensure_error_with_substring = function(msg, substring, res, err)
       )
   end
 
-  if not err:find(substring) and substring ~= err then
+  if
+    substring ~= err and
+    not err:find(substring, nil, true) and
+    not err:find(substring)
+  then
     error(
         "ensure_error_with_substring failed: " .. msg
         .. ": can't find expected substring `" .. tostring(substring)
@@ -240,15 +262,6 @@ end
 
 --------------------------------------------------------------------------------
 
--- TODO: Uncomment and move to proper tests
---[[
-ensure_error("ok", "a", nil, "a")
-ensure_error("bad1", "a", nil, "a", nil)
-ensure_error("bad2", "a", nil, "b")
-ensure_error("bad3", "a", true, "a")
---]]
-
--- TODO: Write tests for this one
 local ensure_fails_with_substring = function(msg, fn, substring)
   local res, err = pcall(fn)
 
@@ -260,13 +273,39 @@ local ensure_fails_with_substring = function(msg, fn, substring)
     error("ensure_fails_with_substring failed: " .. msg .. ": call failed with non-string error")
   end
 
-  if not err:find(substring) then
+  if
+    substring ~= err and
+    not err:find(substring, nil, true) and
+    not err:find(substring)
+  then
     error(
         "ensure_fails_with_substring failed: " .. msg
         .. ": can't find expected substring `" .. tostring(substring)
         .. "' in error message:\n" .. err
       )
   end
+end
+
+--------------------------------------------------------------------------------
+
+local ensure_has_substring = function(msg, str, substring)
+  if type(str) ~= "string" then
+    error(
+        "ensure_has_substring failed: " .. msg .. ": value is not a string",
+        2
+      )
+  end
+
+  ensure(
+     'ensure_has_substring failed: ' .. msg
+      .. ": can't find expected substring `" .. tostring(substring)
+      .. "' in string: `" .. str .. "'",
+      (str == substring)
+        or str:find(substring, nil, true)
+        or str:find(substring)
+    )
+
+  return str
 end
 
 --------------------------------------------------------------------------------
@@ -341,12 +380,14 @@ return
 {
   ensure = ensure;
   ensure_equals = ensure_equals;
+  ensure_is = ensure_is;
   ensure_tequals = ensure_tequals;
   ensure_tdeepequals = ensure_tdeepequals;
   ensure_strequals = ensure_strequals;
   ensure_error = ensure_error;
   ensure_error_with_substring = ensure_error_with_substring;
   ensure_fails_with_substring = ensure_fails_with_substring;
+  ensure_has_substring = ensure_has_substring;
   ensure_aposteriori_probability = ensure_aposteriori_probability;
   ensure_returns = ensure_returns;
 }

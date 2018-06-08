@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- tstr.lua: visualization of non-recursive tables.
+--- Visualization of non-recursive tables.
+-- @module lua-nucleo.tstr
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local pairs, ipairs, type, tostring = pairs, ipairs, type, tostring
@@ -9,7 +10,7 @@ local table_concat = table.concat
 local string_match, string_format = string.match, string.format
 
 local lua51_keywords = import 'lua-nucleo/language.lua' { 'lua51_keywords' }
-local number_to_string = import 'lua-nucleo/string.lua' { 'number_to_string' }
+local serialize_number = import 'lua-nucleo/string.lua' { 'serialize_number' }
 
 local tstr, tstr_cat
 do
@@ -79,7 +80,7 @@ do
         cat('"table (recursive)"')
       end
     elseif t_type == "number" then
-      cat(number_to_string(t))
+      cat(serialize_number(t))
     elseif t_type == "boolean" then
       cat(tostring(t))
     elseif t == nil then
@@ -96,8 +97,6 @@ do
   -- This function intentionally loses information on nested recursive tables
   -- and on non-serializable types like functions, threads and userdata.
 
-  -- TODO: Ensure this is tested.
-  -- TODO: WTF?! It should fail now with untested imports error.
   tstr_cat = function(cat, t)
     impl(t, cat, {})
   end

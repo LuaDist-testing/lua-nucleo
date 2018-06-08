@@ -46,6 +46,7 @@ local empty_table,
       tiflip,
       tset,
       tiset,
+      tisarray,
       tiinsert_args,
       timap_inplace,
       timap,
@@ -94,6 +95,8 @@ local empty_table,
       tifindvalue_nonrecursive,
       tkvmap_unpack,
       tarraytohash,
+      tkvlist_to_hash,
+      tmerge_many,
       table_utils_exports
       = import 'lua-nucleo/table-utils.lua'
       {
@@ -109,6 +112,7 @@ local empty_table,
         'tiflip',
         'tset',
         'tiset',
+        'tisarray',
         'tiinsert_args',
         'timap_inplace',
         'timap',
@@ -155,8 +159,10 @@ local empty_table,
         'tfilterkeylist',
         'tisempty',
         'tifindvalue_nonrecursive',
-        "tkvmap_unpack",
-        "tarraytohash"
+        'tkvmap_unpack',
+        'tarraytohash',
+        'tkvlist_to_hash',
+        'tmerge_many'
       }
 
 --------------------------------------------------------------------------------
@@ -2371,6 +2377,189 @@ end)
 
 --------------------------------------------------------------------------------
 
+test:group "tkvlist_to_hash"
+
+--------------------------------------------------------------------------------
+
+test "tkvlist_to_hash_simple" (function()
+  ensure_tdeepequals(
+      "tkvlist_to_hash simple",
+      tkvlist_to_hash(
+          {
+            "key1",
+            "value1",
+            "key2",
+            "value2"
+          }
+        ),
+      { key1 = "value1", key2 = "value2" }
+    )
+end)
+
+test "tkvlist_to_hash_not_array" (function()
+  local t =
+  {
+    key1 = 1,
+    key2 = 2,
+  }
+  ensure_tdeepequals(
+      "tkvlist_to_hash_not_array",
+      tkvlist_to_hash(
+          { key1 = 1, key2 = 2 }
+        ),
+      { }
+    )
+end)
+
+test "tkvlist_to_hash_odd_array" (function()
+  local t =
+  ensure_tdeepequals(
+      "tkvlist_to_hash_odd_array",
+      tkvlist_to_hash(
+          {
+            "key",
+            "value",
+            "garbage"
+          }
+        ),
+      { key = "value" }
+    )
+end)
+
+test "tkvlist_to_hash_empty_table" (function()
+  local t =
+  ensure_tdeepequals(
+      "tkvlist_to_hash_empty_table",
+      tkvlist_to_hash({ }),
+      { }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tmerge_many"
+
+--------------------------------------------------------------------------------
+
+test "tmerge_many-simple" (function()
+  ensure_tdeepequals(
+      "tmerge_many-simple",
+      tmerge_many(
+          { key1 = 1, key2 = 2 },
+          { key3 = 3, key4 = 4 }
+        ),
+      {
+        key1 = 1;
+        key2 = 2;
+        key3 = 3;
+        key4 = 4;
+      }
+    )
+end)
+
+test "tmerge_many-with-duplicate-keys" (function()
+  ensure_tdeepequals(
+      "tmerge_many-simple",
+      tmerge_many(
+          { key1 = 1, key2 = 2 },
+          { key2 = 3, key4 = 4 }
+        ),
+      {
+        key1 = 1;
+        key2 = 3;
+        key4 = 4;
+      }
+    )
+end)
+
+test "tmerge_many-with-empty-table" (function()
+  ensure_tdeepequals(
+      "tmerge_many-simple",
+      tmerge_many(
+          { key1 = 1, key2 = 2 },
+          { },
+          { key3 = 3}
+        ),
+      {
+        key1 = 1;
+        key2 = 2;
+        key3 = 3;
+      }
+    )
+end)
+
+test "tmerge_many-with-empty-arguments" (function()
+  ensure_tdeepequals(
+      "tmerge_many-simple",
+      tmerge_many(),
+      { }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tisarray"
+
+--------------------------------------------------------------------------------
+
+test "tisarray-valid-array" (function()
+  ensure("Should return true on an array", tisarray({ 1, 2, 3 }))
+  ensure(
+      "Should return true on an array", 
+      tisarray({ [1] = 1, [2] = 2, [3] = 3 })
+    )
+end)
+
+test "tisarray-dict" (function()
+  ensure("Should return false on a dictionary", not tisarray({ a = 1, b = 2 }))
+end)
+
+test "tisarray-empty-table" (function()
+  ensure("Should return true on a empty table", tisarray({  }))
+end)
+
+test "tisarray-sparse-array" (function()
+  ensure(
+      "Should return false on an array with gaps", 
+      not tisarray({ [1] = 1, [3] = 3})
+    )
+  ensure(
+      "Should return false on an array with nils", 
+      not tisarray({ 1, 2, nil, 3 })
+    )
+  ensure(
+      "Should return false on an array with gaps", 
+      not tisarray({ [1] = 1, [3] = 3})
+    )
+  ensure(
+      "Should return false on a dict starts from 0", 
+      not tisarray({ [0] = 1, [1] = 3 })
+    )
+
+  ensure(
+      "Should return false on a shifted dict", 
+      not tisarray({ [2] = 1, [3] = 3 })
+    )
+end)
+
+test "tisarray-fraction-index" (function()
+  ensure(
+      "Should return false on a dict with fractional indices", 
+      not tisarray({ [3.1415] = 1, [2.71] = 3 })
+    )
+  ensure(
+      "Should return false on a dict with fractional indices", 
+      not tisarray({ [0.1] = 4 })
+    )
+
+  ensure(
+      "Should return false in case of double percision overflow", 
+      not tisarray({ [10 ^ 16] = 0 })
+    )
+end)
+
+--------------------------------------------------------------------------------
+
 test:UNTESTED 'tmap_values'
 test:UNTESTED 'torderedset'
 test:UNTESTED 'torderedset_insert'
@@ -2395,7 +2584,3 @@ test:UNTESTED 'tisempty'
 test:UNTESTED 'tifindvalue_nonrecursive'
 test:UNTESTED 'tgenerate_1d_linear'
 test:UNTESTED 'tgenerate_2d_linear'
-
---------------------------------------------------------------------------------
-
-assert(test:run())

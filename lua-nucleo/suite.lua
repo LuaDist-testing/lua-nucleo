@@ -1,6 +1,9 @@
--- suite.lua: a simple test suite
+--------------------------------------------------------------------------------
+--- A simple test suite
+-- @module lua-nucleo.suite
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
+--------------------------------------------------------------------------------
 
 --dofile('lua-nucleo/strict.lua') -- TODO: sandbox absence problem
 if not import then
@@ -13,20 +16,266 @@ local common_method_list
         'common_method_list'
       }
 
-local print, loadfile, xpcall, error, ipairs, assert, type, next, pairs =
-      print, loadfile, xpcall, error, ipairs, assert, type, next, pairs
+local is_string,
+      is_function
+      = import 'lua-nucleo/type.lua'
+      {
+        'is_string',
+        'is_function'
+      }
+
+local bind_many
+      = import 'lua-nucleo/functional.lua'
+      {
+        'bind_many'
+      }
+
+local print, loadfile, xpcall, error, assert, type, next, pairs =
+      print, loadfile, xpcall, error, assert, type, next, pairs
 
 local getmetatable, setmetatable
     = getmetatable, setmetatable
 
-local _G = _G -- TODO: ?!
+local _G = _G
 
 local debug_traceback = debug.traceback
-local table_concat = table.concat
+local table_concat, table_insert = table.concat, table.insert
 
 local err_handler = function(err)
   print(debug_traceback(err, 2))
   return err
+end
+
+local make_single_test
+do
+  local with = function(self, decorator)
+    assert(type(self) == "table", "bad self")
+    assert(type(decorator) == "function", "bad function")
+
+    local decorators = self.decorators_
+    table_insert(decorators, 1, decorator)
+    return self
+  end
+
+  local add_test = function(self, fn, ...)
+    assert(type(self) == "table", "bad self")
+    assert(type(fn) == "function", "bad callback")
+
+    -- This assertion prevents construction line
+    -- test:case "name" (function() ... end) (function() ... end)
+    assert(self.called_ == false, "already called")
+
+    -- factories can have more than one argument
+    if select("#", ...) > 0 then
+      fn = bind_many(fn, ...)
+    end
+
+    -- decorate tests in reverse order
+    local decorators = self.decorators_
+    for i = 1, #decorators do
+      fn = decorators[i](fn)
+    end
+
+    self.called_ = true
+    return self.test_adder_fn_(fn)
+  end
+
+  local single_test_mt =
+  {
+    __call = add_test;
+  }
+
+  make_single_test = function(test_adder_fn)
+    assert(type(test_adder_fn) == "function", "bad callback")
+
+    return setmetatable(
+        {
+          with = with;
+          add_test = add_test;
+
+          -- fields
+          decorators_ = { };
+          test_adder_fn_ = test_adder_fn;
+          called_ = false;
+        },
+        single_test_mt
+      )
+  end
+end
+
+-- It's a hackish semi-private method that uses private `suite`
+-- properties outside a `suite` object
+-- TODO: refactor this in order to not use private properties from
+-- outer functions
+-- https://github.com/lua-nucleo/lua-nucleo/issues/6
+local run = function(self)
+  assert(type(self) == "table", "bad self")
+
+  if self.is_completed_ then
+    error("suited was already completed")
+  end
+
+  print("Running suite", self.name_, self.strict_mode_ and "in STRICT mode")
+
+  local failed_on_first_error = false
+  local nok, errs = 0, {}
+
+  local check_output = function(test, ok, err, text, increment)
+    increment = increment or 0
+    if ok and increment ~= 0 then
+      print("OK")
+      nok = nok + increment
+    elseif not ok then
+      errs[#errs + 1] = { name = test.name, err = err }
+      if not self.fail_on_first_error_ then
+        print("ERR", text)
+      else
+        errs[#errs + 1] =
+        {
+          name = "[FAIL ON FIRST ERROR]",
+          err = "FAILED AS REQUESTED"
+        }
+        print("ERR (failing on first error)", text)
+        failed_on_first_error = true
+        return false
+      end
+    end
+    return true
+  end
+
+  for i = 1, #self.tests_ do
+    local test = self.tests_[i]
+    print("Suite test", test.name)
+    local env = { }
+    if self.tests_.set_up_ ~= nil then
+      local ok, res_up, err_up = xpcall(
+          function() self.tests_.set_up_(env) end,
+          err_handler
+        )
+      if
+        not check_output(
+            test,
+            ok and not err_up,
+            not ok and res_up or err_up,
+            "set up"
+          )
+      then
+        break
+      end
+    end
+
+    local ok, res, err = xpcall(function() test.fn(env) end, err_handler)
+    if
+      not check_output(
+          test,
+          ok and not err,
+          not ok and res or err,
+          "",
+          1
+        )
+    then
+      break
+    end
+
+    if self.tests_.tear_down_ ~= nil then
+      local ok, res_down, err_down = xpcall(
+          function() self.tests_.tear_down_(env) end,
+          err_handler
+        )
+      if
+        not check_output(
+            test,
+            ok and not err_down,
+            not ok and res_down or err_down,
+            "tear down"
+          )
+      then
+        break
+      end
+    end
+  end
+
+  local todo_messages = nil
+  if not failed_on_first_error then
+    local imports_set = self.imports_set_
+    if imports_set then
+      print("Checking suite completeness")
+      if #self.tests_ == 0 and #self.todos_ == 0 then
+        print("ERR")
+        errs[#errs + 1] = { name = "[completeness check]", err = "empty" }
+      elseif next(imports_set) == nil then
+        print("OK")
+        nok = nok + 1
+      else
+        print("ERR")
+
+        local list = { }
+        for name, _ in pairs(imports_set) do
+          list[#list + 1] = name
+        end
+
+        errs[#errs + 1] =
+        {
+          name = "[completeness check]";
+          err = "detected untested imports: "
+            .. table_concat(list, ", ")
+            ;
+        }
+      end
+    end
+
+    if #self.todos_ > 0 then
+      todo_messages = { }
+      for i = 1, #self.todos_ do
+        local todo = self.todos_[i]
+        todo_messages[#todo_messages + 1] = "   -- "
+        todo_messages[#todo_messages + 1] = todo
+        todo_messages[#todo_messages + 1] = "\n"
+      end
+      todo_messages = table_concat(todo_messages)
+
+      if self.strict_mode_ then
+        errs[#errs + 1] =
+        {
+          name = "[STRICT MODE]";
+          err = "detected TODOs:\n" .. todo_messages;
+        }
+      end
+    end
+  end
+
+  local nerr = #errs
+
+  print("Total tests in suite:", nok + nerr)
+  print("Successful:", nok)
+
+  if failed_on_first_error then
+    print("Failed on first error")
+  end
+
+  if nerr > 0 then
+    print("Failed:", nerr)
+    local msg = { "Suite `", self.name_, "' failed:\n" }
+    for i = 1, #errs do
+      local err = errs[i]
+      print(err.name, err.err)
+      msg[#msg + 1] = " * Test `"
+      msg[#msg + 1] = err.name
+      msg[#msg + 1] = "': "
+      msg[#msg + 1] = err.err
+      msg[#msg + 1] = "\n"
+    end
+    assert(self.error_message_ == nil, "error message was already filled up")
+    self.error_message_ = table_concat(msg)
+  end
+
+  if todo_messages and not self.strict_mode_ then
+    print("\nTODO:")
+    print(todo_messages)
+  end
+
+  self.error_count_ = nerr
+  self.is_completed_ = true
 end
 
 local make_suite
@@ -69,9 +318,9 @@ do
     assert(type(self) == "table", "bad self")
     assert(type(msg) == "string", "bad msg")
     self:TODO("BROKEN TEST: " .. msg)
-    return function(fn)
+    return make_single_test(function(fn)
       assert(type(fn) == "function", "bad callback")
-    end
+    end)
   end
 
   local UNTESTED = function(self, import_name)
@@ -108,10 +357,10 @@ do
     assert(type(name) == "string", "bad import name")
     check_duplicate(self, name)
 
-    return function(fn)
+    return make_single_test(function(fn)
       assert(type(fn) == "function", "bad callback")
       self.tests_[#self.tests_ + 1] = { name = name, fn = fn }
-    end
+    end)
   end
 
   local add_methods = function(self, methods_list)
@@ -123,7 +372,6 @@ do
       local method_full_name = self.current_group_ .. ":" .. method
       assert(not imports_set[method_full_name], "duplicate test name")
       imports_set[method_full_name] = true
-
     end
   end
 
@@ -134,15 +382,12 @@ do
     check_name(self, name)
     self.current_group_ = name
 
-    return function(factory, ...)
-      if type(factory) == "function" then
-        add_methods(self, common_method_list(factory, ...))
-      elseif type(factory) == "table" then
-        add_methods(self, factory)
-      else
-        error("expected function or table")
-      end
-    end
+    return make_single_test(function(factory, ...)
+      assert(type(factory) == "function", "bad factory")
+      -- pass clean environment to decorated factory, own arguments of factory
+      -- (if any) protected by bind_many inside make_single_test constructor
+      add_methods(self, common_method_list(factory, { }))
+    end)
   end
 
   local method = function(self, name)
@@ -176,146 +421,6 @@ do
 
   local case = test -- Useful alias
 
-  local run = function(self)
-    assert(type(self) == "table", "bad self")
-
-    print("Running suite", self.name_, self.strict_mode_ and "in STRICT mode")
-
-    local failed_on_first_error = false
-    local nok, errs = 0, {}
-
-    local check_output = function(test, res, err, text, increment)
-      increment = increment or 0
-      if res and increment ~= 0 then
-        print("OK")
-        nok = nok + increment
-      elseif res == false then
-        errs[#errs + 1] = { name = test.name, err = err }
-        if not self.fail_on_first_error_ then
-          print("ERR", text)
-        else
-          errs[#errs + 1] =
-          {
-            name = "[FAIL ON FIRST ERROR]",
-            err = "FAILED AS REQUESTED"
-          }
-          print("ERR (failing on first error)", text)
-          failed_on_first_error = true
-          return false
-        end
-      end
-      return true
-    end
-
-    for i, test in ipairs(self.tests_) do
-      print("Suite test", test.name)
-      if self.tests_.set_up_ ~= nil then
-        local res_up, err_up = xpcall(
-            function() self.tests_.set_up_() end,
-            err_handler
-          )
-        if not check_output(test, res_up, err_up, "set up") then
-          break
-        end
-      end
-
-      local res, err = xpcall(function() test.fn() end, err_handler)
-      if check_output(test, res, err, "", 1) == false then break end
-
-      if self.tests_.tear_down_ ~= nil then
-        local res_down, err_down = xpcall(
-            function() self.tests_.tear_down_() end,
-            err_handler
-          )
-        if not check_output(test, res_down, err_down, "tear down") then break end
-      end
-    end
-
-    local todo_messages = nil
-    if not failed_on_first_error then
-      local imports_set = self.imports_set_
-      if imports_set then
-        print("Checking suite completeness")
-        if #self.tests_ == 0 and #self.todos_ == 0 then
-          print("ERR")
-          errs[#errs + 1] = { name = "[completeness check]", err = "empty" }
-        elseif next(imports_set) == nil then
-          print("OK")
-          nok = nok + 1
-        else
-          print("ERR")
-
-          local list = { }
-          for name, _ in pairs(imports_set) do
-            list[#list + 1] = name
-          end
-
-          errs[#errs + 1] =
-          {
-            name = "[completeness check]";
-            err = "detected untested imports: "
-              .. table_concat(list, ", ")
-              ;
-          }
-        end
-      end
-
-      if #self.todos_ > 0 then
-        todo_messages = { }
-        for i, todo in ipairs(self.todos_) do
-          todo_messages[#todo_messages + 1] = "   -- "
-          todo_messages[#todo_messages + 1] = todo
-          todo_messages[#todo_messages + 1] = "\n"
-        end
-        todo_messages = table_concat(todo_messages)
-
-        if self.strict_mode_ then
-          errs[#errs + 1] =
-          {
-            name = "[STRICT MODE]";
-            err = "detected TODOs:\n" .. todo_messages;
-          }
-        end
-      end
-    end
-
-    local nerr = #errs
-
-    print("Total tests in suite:", nok + nerr)
-    print("Successful:", nok)
-
-    if failed_on_first_error then
-      print("Failed on first error")
-    end
-
-    local msg
-
-    if nerr > 0 then
-      print("Failed:", nerr)
-      msg = {"Suite `", self.name_, "' failed:\n"}
-      for i, err in ipairs(errs) do
-        print(err.name, err.err)
-        msg[#msg + 1] = " * Test `"
-        msg[#msg + 1] = err.name
-        msg[#msg + 1] = "': "
-        msg[#msg + 1] = err.err
-        msg[#msg + 1] = "\n"
-      end
-      msg = table_concat(msg)
-    end
-
-    if todo_messages and not self.strict_mode_ then
-      print("\nTODO:")
-      print(todo_messages)
-    end
-
-    if nerr ~= 0 then
-      return nil, msg
-    end
-
-    return true
-  end
-
   local set_strict_mode = function(self, flag)
     assert(type(self) == "table", "bad self")
     assert(type(flag) == "boolean", "bad flag")
@@ -334,6 +439,14 @@ do
   {
     __call = test;
   }
+
+  local get_error_count = function(self)
+    return self.error_count_
+  end
+
+  local get_error_message = function(self)
+    return self.error_message_
+  end
 
   make_suite = function(name, imports)
     assert(type(name) == "string", "bad name")
@@ -361,32 +474,39 @@ do
           case = case; -- Note this is an alias for test().
           set_up = set_up;
           tear_down = tear_down;
-          run = run;
           set_strict_mode = set_strict_mode;
           in_strict_mode = in_strict_mode;
-          set_fail_on_first_error = set_fail_on_first_error; -- TODO: Test this!
+          -- TODO: test set_fail_on_first_error
+          -- https://github.com/lua-nucleo/lua-nucleo/issues/4
+          set_fail_on_first_error = set_fail_on_first_error;
           UNTESTED = UNTESTED;
           TODO = TODO;
           BROKEN = BROKEN;
           factory = factory;
           method = method;
           methods = methods;
+          get_error_count = get_error_count;
+          get_error_message = get_error_message;
           --
           name_ = name;
           strict_mode_ = false;
           fail_on_first_error_ = false;
           imports_set_ = imports_set;
           current_group_ = "";
-          tests_ = {};
-          test_names_ = {};
-          todos_ = {};
+          tests_ = { };
+          test_names_ = { };
+          todos_ = { };
+          --
+          error_count_ = 0;
+          error_message_ = nil;
+          is_completed_ = false;
         },
         suite_mt
       )
   end
 end
 
-local run_test = function(name, parameters_list)
+local run_test = function(target, parameters_list)
   local result, stage, msg = true, nil, nil
 
   -- TODO: Remove. Legacy code compatibility
@@ -400,26 +520,50 @@ local run_test = function(name, parameters_list)
 
   local strict_mode = not not parameters_list.strict_mode
   local fail_on_first_error = not not parameters_list.fail_on_first_error
+  local suite
+
   local suite_maker = function(...)
-    local suite = make_suite(...)
-    suite:set_strict_mode(strict_mode)
-    suite:set_fail_on_first_error(fail_on_first_error)
-    return suite
+    if suite ~= nil then
+      error("suite was already initialized")
+    else
+      suite = make_suite(...)
+      suite:set_strict_mode(strict_mode)
+      suite:set_fail_on_first_error(fail_on_first_error)
+      return suite
+    end
   end
 
   local gmt = getmetatable(_G) -- Preserve metatable
   math.randomseed(parameters_list.seed_value)
-  local fn, load_err = loadfile(name)
+
+  local fn, load_err
+  if is_function(target) then
+    fn = target
+  elseif is_string(target) then
+    fn, load_err = loadfile(target)
+  else
+    error("target should be filename or function")
+  end
+
   if not fn then
     result, stage, msg = false, "load", load_err
   else
-    local res, run_err = xpcall(
-        function() fn(suite_maker) end,
+    local ok, res = xpcall(
+        function()
+          fn(suite_maker)
+
+          if suite ~= nil then
+            run(suite)
+          else
+            error("suite wasn't initialized")
+          end
+        end,
         err_handler
       )
-
-    if not res then
-      result, stage, msg = false, "run", run_err
+    if not ok then
+      result, stage, msg = false, "run", res
+    elseif suite:get_error_count() > 0 then
+      result, stage, msg = false, "run", suite:get_error_message()
     end
     uninstall_strict_mode_()
   end
@@ -450,7 +594,8 @@ local run_tests = function(names, parameters_list)
     print("STRICT mode is disabled")
   end
 
-  for _, name in ipairs(names) do
+  for i = 1, #names do
+    local name = names[i]
     print("Running test", name)
     local res, stage, err, todo = run_test(name, parameters_list)
     if res then
@@ -493,5 +638,6 @@ end
 return
 {
   run_tests = run_tests;
+  run_test = run_test;
   make_suite = make_suite;
 }

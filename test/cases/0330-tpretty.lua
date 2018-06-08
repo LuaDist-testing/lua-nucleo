@@ -4,7 +4,12 @@
 -- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
+local pairs = pairs
+
 local make_suite = assert(loadfile('test/test-lib/init/strict.lua'))(...)
+
+declare 'jit'
+local jit = jit
 
 local ensure,
       ensure_equals,
@@ -20,11 +25,15 @@ local ensure,
         'ensure_fails_with_substring'
       }
 
-local tpretty,
+local tpretty_ex,
+      tpretty,
+      tpretty_ordered,
       tpretty_exports
       = import 'lua-nucleo/tpretty.lua'
       {
-        'tpretty'
+        'tpretty_ex',
+        'tpretty',
+        'tpretty_ordered'
       }
 
 --------------------------------------------------------------------------------
@@ -33,27 +42,27 @@ local test = make_suite("tpretty", tpretty_exports)
 
 --------------------------------------------------------------------------------
 
-test:group "tpretty"
+test:group "tpretty_ex"
 
 --------------------------------------------------------------------------------
 
-test "tpretty-not-a-table" (function()
+test "tpretty_ex-not-a-table" (function()
   ensure_strequals(
       "t is not a table",
-      tpretty(42),
+      tpretty_ex(pairs, 42),
       '42'
     )
 end)
 
-test "tpretty-simple-table" (function()
+test "tpretty_ex-simple-table" (function()
   ensure_strequals(
       "t is a simple table",
-      tpretty({"DEPLOY_MACHINE"}),
+      tpretty_ex(pairs, {"DEPLOY_MACHINE"}),
       '{ "DEPLOY_MACHINE" }'
     )
 end)
 
-test "tpretty-without-optional-params" (function()
+test "tpretty_ex-without-optional-params" (function()
   local s1 = [[
 {
   result =
@@ -77,8 +86,9 @@ test "tpretty-without-optional-params" (function()
 
   ensure_strequals(
       [[default values for optional params is 80 and "  "]],
-      tpretty(ensure("parse", (loadstring("return " .. s1))())),
-      tpretty(
+      tpretty_ex(pairs, ensure("parse", (loadstring("return " .. s1))())),
+      tpretty_ex(
+          pairs,
           ensure("parse", loadstring("return " .. s1))(),
           "  ",
           80
@@ -87,7 +97,7 @@ test "tpretty-without-optional-params" (function()
 end)
 
 -- Based on actual bug scenario
-test "tpretty-bug-concat-nil-minimal" (function()
+test "tpretty_ex-bug-concat-nil-minimal" (function()
   local s1 = [[
 {
   stats = { };
@@ -99,7 +109,8 @@ test "tpretty-bug-concat-nil-minimal" (function()
       "first result matches expected",
       ensure(
           "render first",
-          tpretty(
+          tpretty_ex(
+              pairs,
               ensure("parse", loadstring("return " .. s1))(),
               "  ",
               80
@@ -112,7 +123,8 @@ test "tpretty-bug-concat-nil-minimal" (function()
       "second result matches expected",
       ensure(
           "render second",
-          tpretty(
+          tpretty_ex(
+              pairs,
               ensure("parse", loadstring("return " .. s2))(),
               "  ",
               80
@@ -123,8 +135,31 @@ test "tpretty-bug-concat-nil-minimal" (function()
 end)
 
 -- Based on actual bug scenario
-test "tpretty-bug-concat-nil-full" (function()
-  local s1 = [[
+test "tpretty_ex-bug-concat-nil-full" (function()
+  -- TODO: systematic solution required
+  -- https://github.com/lua-nucleo/lua-nucleo/issues/18
+  local s1
+  if jit ~= nil then
+    s1 = [[
+{
+  result =
+  {
+    stats =
+    {
+      garden =
+      {
+        views_total = "INTEGER";
+        unique_visits_yesterday = "INTEGER";
+        id = "GARDEN_ID";
+        views_yesterday = "INTEGER";
+        unique_visits_total = "INTEGER";
+      };
+    };
+  };
+  events = { };
+}]]
+  else
+    s1 = [[
 {
   result =
   {
@@ -142,6 +177,7 @@ test "tpretty-bug-concat-nil-full" (function()
   };
   events = { };
 }]]
+  end
 
   local s2 = [[
 {
@@ -158,7 +194,8 @@ test "tpretty-bug-concat-nil-full" (function()
       "first result matches expected",
       ensure(
           "render first",
-          tpretty(
+          tpretty_ex(
+              pairs,
               ensure("parse", loadstring("return " .. s1))(),
               "  ",
               80
@@ -171,7 +208,8 @@ test "tpretty-bug-concat-nil-full" (function()
       "second result matches expected",
       ensure(
           "render second",
-          tpretty(
+          tpretty_ex(
+              pairs,
               ensure("parse", loadstring("return " .. s2))(),
               "  ",
               80
@@ -185,7 +223,7 @@ end)
 -- #2304 and #2317
 --
 -- In case of failure. `this_field_was_empty' miss in output
-test "tpretty-fieldname-bug" (function ()
+test "tpretty_ex-fieldname-bug" (function ()
   local cache_file_contents = [[
 {
   projects =
@@ -209,7 +247,8 @@ test "tpretty-fieldname-bug" (function ()
     "second result matches expected",
     ensure(
       "render second",
-      tpretty(
+      tpretty_ex(
+        pairs,
         ensure("parse error", loadstring("return " .. cache_file_contents))(),
         "  ",
         80
@@ -226,7 +265,7 @@ end)
 --
 -- Extra = is rendered as a table separator instead of ;
 -- and after opening {.
-test "tpretty-wrong-table-list-separator-bug" (function ()
+test "tpretty_ex-wrong-table-list-separator-bug" (function ()
   local data = [[
 {
   {
@@ -242,7 +281,8 @@ test "tpretty-wrong-table-list-separator-bug" (function ()
     "second result matches expected",
     ensure(
       "render second",
-      tpretty(
+      tpretty_ex(
+        pairs,
         ensure("data string loads", loadstring("return " .. data))(),
         "  ",
         80
@@ -252,7 +292,7 @@ test "tpretty-wrong-table-list-separator-bug" (function ()
   )
 end)
 
-test "tpretty-wrong-key-indent-bug" (function ()
+test "tpretty_ex-wrong-key-indent-bug" (function ()
   local data = [[
 {
   { };
@@ -265,7 +305,8 @@ test "tpretty-wrong-key-indent-bug" (function ()
     "second result matches expected",
     ensure(
       "render second",
-      tpretty(
+      tpretty_ex(
+        pairs,
         ensure("data string loads", loadstring("return " .. data))(),
         "  ",
         80
@@ -279,14 +320,15 @@ end)
 
 -- Test based on real bug scenario
 -- #3836
-test "tpretty-serialize-inf-bug" (function ()
+test "tpretty_ex-serialize-inf-bug" (function ()
   local table_with_inf = "{ 1/0, -1/0, 0/0 }"
 
   ensure_strequals(
     "second result matches expected",
     ensure(
       "render second",
-      tpretty(
+      tpretty_ex(
+        pairs,
         ensure("parse error", loadstring("return " .. table_with_inf))(),
         "  ",
         80
@@ -298,4 +340,118 @@ end)
 
 --------------------------------------------------------------------------------
 
-assert(test:run())
+test "tpretty_ex-custom-iterator" (function()
+  local t = { 1, 2, 3 }
+  local iterator_invocations_counter = 0
+
+  local custom_iterator = function(table)
+    local iterator_function = function(table, pos)
+      iterator_invocations_counter = iterator_invocations_counter + 1
+
+      pos = pos or 0
+      if pos < #table then
+        pos = pos + 1
+        return pos, table[pos]
+      end
+    end
+    return iterator_function, table, nil
+  end
+
+  tpretty_ex(custom_iterator, t)
+
+  ensure_equals(
+      "iterator invocations counter must match expected",
+      iterator_invocations_counter,
+      4
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tpretty"
+
+--------------------------------------------------------------------------------
+
+test "tpretty-simple" (function()
+  local input = [[
+{
+  1;
+  2;
+  3;
+  a =
+  {
+    b =
+    {
+      c = { };
+    };
+  };
+}]]
+
+  ensure_strequals(
+    "result matches expected",
+    ensure(
+      "render is OK",
+      tpretty(ensure("parse error", loadstring("return " .. input))())
+    ),
+    input
+  )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tpretty_ordered"
+
+--------------------------------------------------------------------------------
+
+test "tpretty-ordered" (function()
+  local input = [[
+{
+  result =
+  {
+    stats2 =
+    {
+      a3333333333333 = "INTEGER";
+      a2222222222222 = "INTEGER";
+      a1111111111111 = "GARDEN_ID";
+    };
+    stats1 =
+    {
+      bbbbbbbbbbbbbb = "INTEGER";
+      cccccccccccccc = "INTEGER";
+      aaaaaaaaaaaaaa = "GARDEN_ID";
+    };
+  };
+}]]
+
+  local expected = [[
+{
+  result =
+  {
+    stats1 =
+    {
+      aaaaaaaaaaaaaa = "GARDEN_ID";
+      bbbbbbbbbbbbbb = "INTEGER";
+      cccccccccccccc = "INTEGER";
+    };
+    stats2 =
+    {
+      a1111111111111 = "GARDEN_ID";
+      a2222222222222 = "INTEGER";
+      a3333333333333 = "INTEGER";
+    };
+  };
+}]]
+
+  ensure_strequals(
+      "first result matches expected",
+      ensure(
+          "render first",
+          tpretty_ordered(
+              ensure("parse", loadstring("return " .. input))(),
+              "  ",
+              80
+            )
+        ),
+      expected
+    )
+end)

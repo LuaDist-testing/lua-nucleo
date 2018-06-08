@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- profile.lua: lua-nucleo exports profile
+--- Lua-nucleo exports profile
+-- @module lua-nucleo.code.profile
 -- This file is a part of lua-nucleo library
--- Copyright (c) lua-nucleo authors (see file `COPYRIGHT` for the license)
+-- @copyright lua-nucleo authors (see file `COPYRIGHT` for the license)
 --------------------------------------------------------------------------------
 
 local tset = import 'lua-nucleo/table-utils.lua' { 'tset' }
@@ -15,12 +16,12 @@ local PROFILE = { }
 PROFILE.skip = setmetatable(tset
 {
   "lua-nucleo/import.lua";  -- Too low-level
-  "lua-nucleo/import_as_require.lua";  -- Too low-level
   "lua-nucleo/strict.lua";  -- Too low-level
   "lua-nucleo/suite.lua";   -- Too low-level
   "lua-nucleo/table.lua";   -- Contains aliases only, too ambiguous
   "lua-nucleo/module.lua";  -- Too low-level
   "lua-nucleo/pcall.lua";   -- Only for manual use
+  "lua-nucleo/init.lua";    -- Too low-level
 }, {
   __index = function(t, k)
     -- Excluding files outside of lua-nucleo/ and inside lua-nucleo/code
