@@ -11,6 +11,8 @@ local rawget = rawget
 
 local table_insert, table_remove = table.insert, table.remove
 
+local math_min, math_max = math.min, math.max
+
 --------------------------------------------------------------------------------
 
 local arguments,
@@ -27,6 +29,12 @@ local is_table
       = import 'lua-nucleo/type.lua'
       {
         'is_table'
+      }
+
+local assert_is_table
+      = import 'lua-nucleo/typeassert.lua'
+      {
+        'assert_is_table'
       }
 
 --------------------------------------------------------------------------------
@@ -130,6 +138,16 @@ local tflip = function(t)
   end
 
   return r
+end
+
+-- If table contains multiple keys with the same value,
+-- only one key is stored in the result, picked in undetermined way.
+local tflip_inplace = function(t)
+  for k, v in pairs(t) do
+    t[v] = k
+  end
+
+  return t
 end
 
 -- If table contains multiple keys with the same value,
@@ -240,10 +258,29 @@ local tiunique = function(t)
   return tkeys(tiflip(t))
 end
 
+-- Deprecated, use tgenerate_1d_linear instead
 local tgenerate_n = function(n, generator, ...)
   local r = { }
   for i = 1, n do
     r[i] = generator(...)
+  end
+  return r
+end
+
+local tgenerate_1d_linear = function(n, fn, ...)
+  local r = { }
+  for i = 1, n do
+    r[#r + 1] = fn(i, ...)
+  end
+  return r
+end
+
+local tgenerate_2d_linear = function(w, h, fn, ...)
+  local r = { }
+  for y = 1, h do
+    for x = 1, w do
+      r[#r + 1] = fn(x, y, ...)
+    end
   end
   return r
 end
@@ -625,6 +662,165 @@ local tkvtorecordlist = function(t, key_name, value_name)
   return result
 end
 
+local function tgetpath(t, k, nextk, ...)
+  if k == nil then
+    return nil
+  end
+
+  local v = t[k]
+  if not is_table(v) or nextk == nil then
+    return v
+  end
+
+  return tgetpath(v, nextk, ...)
+end
+
+--  tsetpath(tabl, "a", "b", "c", d)
+--  tabl.a.b.c[d] = val
+local tsetpath
+do
+  local function impl(nargs, dest, key, ...)
+
+    if nargs == 0 then
+      return dest
+    end
+
+    if key == nil then
+      error("tsetpath: nil can't be a table key")
+    end
+
+    dest[key] = assert_is_table(
+        dest[key] or { },
+        'key "' .. key .. '" already exists and its value is not a table'
+      )
+
+    return impl(nargs - 1, dest[key], ...)
+  end
+
+  tsetpath = function(dest, ...)
+    local nargs = select("#", ...)
+    if nargs == 0 then
+      return dest
+    end
+
+    return impl(nargs, dest, ...)
+  end
+end
+
+local tsetpathvalue
+do
+  local function impl(nargs, value, dest, key, ...)
+    assert(nargs > 0)
+
+    if key == nil then
+      error("tsetpathvalue: nil can't be a table key")
+    end
+
+    if nargs == 1 then
+       dest[key] = value
+      return dest
+    end
+
+    dest[key] = assert_is_table(
+        dest[key] or { },
+        'key "' .. key .. '" already exists and its value is not a table'
+      )
+
+    return impl(nargs - 1, value, dest[key], ...)
+  end
+
+  tsetpathvalue = function(value, dest, ...)
+    local nargs = select("#", ...)
+    if nargs == 0 then
+      return dest
+    end
+
+    return impl(nargs, value, dest, ...)
+  end
+end
+
+-- TODO: rename to tislice
+local tslice = function(t, start_i, end_i)
+  local r = { }
+
+  start_i = math_max(start_i, 1)
+  end_i = math_min(end_i, #t)
+  for i = start_i, end_i do
+    r[i - start_i + 1] = t[i]
+  end
+
+  return r
+end
+
+local tarraylisttohashlist = function(t, ...)
+  local r = { }
+  local nargs = select("#", ...)
+
+  for i = 1, #t do
+    local item = { }
+    for j = 1, nargs do
+      local hash = select(j, ...)
+      if hash ~= nil then -- ignore nil from arguments
+        item[hash] = t[i][j]
+      end
+    end
+    r[#r + 1] = item
+  end
+
+  return r
+end
+
+local tisempty = function(t)
+  return next(t) == nil
+end
+
+local tifindvalue_nonrecursive = function(t, v)
+  for i = 1, #t do
+    if t[i] == v then
+      return true
+    end
+  end
+  return false
+end
+
+local tkvlist2kvpairs = function(t)
+  local r = { }
+  for i = 1, #t, 2 do
+    local k, v = t[i], t[i+1]
+    if k ~= nil then
+      r[k] = v
+    end
+  end
+  return r
+end
+
+local tfilterkeylist = function(t, f, strict)
+  strict = strict or false
+  local r = { }
+
+  for i = 1, #f do
+    local k = f[i]
+    if t[k] ~= nil then
+      r[k] = t[k]
+    elseif strict then
+      return nil, "Field " .. k .. " is absent"
+    end
+  end
+  return r
+end
+
+local tkvmap_unpack = function(fn, t, ...)
+  local r = { }
+  for k, v in pairs(t) do
+    k, v = fn(k, ...), fn(v, ...)
+
+    if k ~= nil and v ~= nil then
+      r[#r + 1] = k
+      r[#r + 1] = v
+    end
+  end
+  return unpack(r)
+end
 --------------------------------------------------------------------------------
 
 return
@@ -637,6 +833,7 @@ return
   tvalues = tvalues;
   tkeysvalues = tkeysvalues;
   tflip = tflip;
+  tflip_inplace = tflip_inplace;
   tiflip = tiflip;
   tset = tset;
   tiset = tiset;
@@ -648,7 +845,9 @@ return
   tiwalker = tiwalker;
   tequals = tequals;
   tiunique = tiunique;
-  tgenerate_n = tgenerate_n;
+  tgenerate_n = tgenerate_n; -- deprecated
+  tgenerate_1d_linear = tgenerate_1d_linear;
+  tgenerate_2d_linear = tgenerate_2d_linear;
   taccumulate = taccumulate;
   tnormalize = tnormalize;
   tnormalize_inplace = tnormalize_inplace;
@@ -675,4 +874,14 @@ return
   tilistofrecordfields = tilistofrecordfields;
   tipermute_inplace = tipermute_inplace;
   tkvtorecordlist = tkvtorecordlist;
+  tgetpath = tgetpath;
+  tsetpath = tsetpath;
+  tsetpathvalue = tsetpathvalue;
+  tslice = tslice;
+  tarraylisttohashlist = tarraylisttohashlist;
+  tkvlist2kvpairs = tkvlist2kvpairs;
+  tfilterkeylist = tfilterkeylist;
+  tisempty = tisempty;
+  tifindvalue_nonrecursive = tifindvalue_nonrecursive;
+  tkvmap_unpack = tkvmap_unpack;
 }

@@ -17,13 +17,15 @@ local is_string,
 local assert_is_string,
       assert_is_table,
       assert_is_nil,
-      assert_is_function
+      assert_is_function,
+      assert_is_number
       = import 'lua-nucleo/typeassert.lua'
       {
         'assert_is_string',
         'assert_is_table',
         'assert_is_nil',
-        'assert_is_function'
+        'assert_is_function',
+        'assert_is_number'
       }
 
 local tstr,
@@ -41,6 +43,8 @@ local tstr,
         'tclone',
         'tset'
       }
+
+
 
 local is_table
       = import 'lua-nucleo/type.lua'
@@ -72,6 +76,12 @@ local arguments,
         'optional_arguments'
       }
 
+local create_escape_subst
+      = import 'lua-nucleo/string.lua'
+      {
+        'create_escape_subst'
+      }
+
 local make_concatter = import 'lua-nucleo/string.lua' { 'make_concatter' }
 
 local unique_object
@@ -83,6 +93,8 @@ local unique_object
 --------------------------------------------------------------------------------
 
 local LOG_LEVEL,
+      LOG_FLUSH_MODE,
+      FLUSH_SECONDS_DEFAULT,
       END_OF_LOG_MESSAGE,
       format_logsystem_date,
       get_current_logsystem_date,
@@ -94,6 +106,8 @@ local LOG_LEVEL,
       = import 'lua-nucleo/log.lua'
       {
         'LOG_LEVEL',
+        'LOG_FLUSH_MODE',
+        'FLUSH_SECONDS_DEFAULT',
         'END_OF_LOG_MESSAGE',
         'format_logsystem_date',
         'get_current_logsystem_date',
@@ -111,6 +125,14 @@ local test = make_suite("log", log_exports)
 
 test:test_for "LOG_LEVEL" (function()
   assert_is_table(LOG_LEVEL) -- Smoke test
+end)
+
+test:test_for "LOG_FLUSH_MODE" (function()
+  assert_is_table(LOG_FLUSH_MODE) -- Smoke test
+end)
+
+test:test_for "FLUSH_SECONDS_DEFAULT" (function()
+  assert_is_number(FLUSH_SECONDS_DEFAULT) -- Smoke test
 end)
 
 test:test_for "END_OF_LOG_MESSAGE" (function()
@@ -184,7 +206,7 @@ test:test_for "wrap_file_sink" (function()
   ensure_tequals(
       "call order check",
       buf,
-      { "aaa", END_OF_LOG_MESSAGE, flush_tag, "bbb" }
+      { "aaa", END_OF_LOG_MESSAGE, "bbb" }
     )
 end)
 
@@ -195,6 +217,9 @@ test:factory "make_logging_system" (
   )
 
 --------------------------------------------------------------------------------
+
+-- same as used in log
+local escape_subst = create_escape_subst("\\%03d")
 
 -- TODO: Generalize
 local make_test_concatter = function()
@@ -290,17 +315,23 @@ local check_logger = function(
     end
 
     if is_table(v) then
-      tstr_cat(expected_cat, v)
+      expected_cat(tstr(v))
     else
-      expected_cat(tostring(v))
+      -- same as used in log
+      expected_cat(tostring(v):gsub("[%c%z\128-\255]",  escape_subst))
     end
   end
 
   expected_cat(END_OF_LOG_MESSAGE)
 
-  --print("  actual", tstr(actual))
-  --print("expected", tstr(expected))
-  ensure_tequals("check_logger", actual, expected)
+  local res, err = pcall(ensure_tequals, "check_logger", actual, expected)
+  if not res then
+    error(
+        "err: " .. err
+     .. "\nactual:", tstr(actual)
+     .. "\nexpected", tstr(expected)
+      )
+  end
 
   concatter.reset()
 end
@@ -459,6 +490,28 @@ test "make_module_logger-table" (function()
   check_make_module_logger(
       concatter, check_date_str, logging_system, logging_system_id,
       nil, { [{ 42, nil, 24 }] = { a = 42 } }, nil
+    )
+end)
+
+test "make_module_logger-binary_data" (function()
+  local concatter = make_test_concatter()
+  local logging_system_id = "{logger_id} "
+  local logging_system = ensure(
+      "make logging system",
+      make_logging_system(
+          logging_system_id,
+          concatter.cat,
+          make_common_logging_config(tset(LOG_LEVEL))
+        )
+    )
+
+  local str_test = ""
+  for i = 0, 255 do
+    str_test = str_test .. string.char(i)
+  end
+
+  check_make_module_logger(
+      concatter, check_date_str, logging_system, logging_system_id, str_test
     )
 end)
 

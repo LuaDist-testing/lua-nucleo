@@ -64,6 +64,16 @@ do
     self.todos_[#self.todos_ + 1] = msg
   end
 
+  local BROKEN = function(self, msg)
+    -- Behave as TODO, but allow pass "unused" function inside
+    assert(type(self) == "table", "bad self")
+    assert(type(msg) == "string", "bad msg")
+    self:TODO("BROKEN TEST: " .. msg)
+    return function(fn)
+      assert(type(fn) == "function", "bad callback")
+    end
+  end
+
   local UNTESTED = function(self, import_name)
     assert(type(self) == "table", "bad self")
     assert(type(import_name) == "string", "bad import name")
@@ -357,6 +367,7 @@ do
           set_fail_on_first_error = set_fail_on_first_error; -- TODO: Test this!
           UNTESTED = UNTESTED;
           TODO = TODO;
+          BROKEN = BROKEN;
           factory = factory;
           method = method;
           methods = methods;
@@ -375,18 +386,6 @@ do
   end
 end
 
-local make_suite_strict = function(...)
-  local suite = make_suite(...)
-  suite:set_strict_mode(true)
-  return suite
-end
-
-local make_suite_nonstrict = function(...)
-  local suite = make_suite(...)
-  suite:set_strict_mode(false)
-  return suite
-end
-
 local run_test = function(name, parameters_list)
   local result, stage, msg = true, nil, nil
 
@@ -400,6 +399,13 @@ local run_test = function(name, parameters_list)
   end
 
   local strict_mode = not not parameters_list.strict_mode
+  local fail_on_first_error = not not parameters_list.fail_on_first_error
+  local suite_maker = function(...)
+    local suite = make_suite(...)
+    suite:set_strict_mode(strict_mode)
+    suite:set_fail_on_first_error(fail_on_first_error)
+    return suite
+  end
 
   local gmt = getmetatable(_G) -- Preserve metatable
   math.randomseed(parameters_list.seed_value)
@@ -407,10 +413,6 @@ local run_test = function(name, parameters_list)
   if not fn then
     result, stage, msg = false, "load", load_err
   else
-    local suite_maker = strict_mode
-      and make_suite_strict
-       or make_suite_nonstrict
-
     local res, run_err = xpcall(
         function() fn(suite_maker) end,
         err_handler
@@ -440,6 +442,7 @@ local run_tests = function(names, parameters_list)
   end
 
   local strict_mode = not not parameters_list.strict_mode
+  local fail_on_first_error = not not parameters_list.fail_on_first_error
 
   if strict_mode then
     print("Enabling STRICT mode")
@@ -456,21 +459,33 @@ local run_tests = function(names, parameters_list)
     else
       print("ERR", stage)
       errs[#errs + 1] = { name = name, stage = stage, err = err }
+      if fail_on_first_error then
+        break
+      end
     end
   end
 
   local nerr = #errs
 
   print()
+  print("--------------------------------------------------------------------------------")
+  print()
+  print("Finished running tests.")
+  print()
   print("Total tests:", nok + nerr)
   print("Successful:", nok)
   if nerr > 0 then
-    print()
     print("Failed:", nerr)
-    for i, err in ipairs(errs) do
-      print("["..err.stage.."]", err.name, err.err)
+    print()
+    print("Dumping error messages from failing tests:")
+    print()
+    print("--------------------------------------------------------------------------------")
+    print()
+    for i = 1, nerr do
+      print("["..errs[i].stage.."]", errs[i].name, errs[i].err)
     end
   end
+
 
   return nok, errs
 end

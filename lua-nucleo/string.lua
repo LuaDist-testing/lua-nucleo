@@ -6,6 +6,12 @@ local table_concat, table_insert = table.concat, table.insert
 local string_find, string_sub = string.find, string.sub
 local assert, pairs = assert, pairs
 
+local tidentityset
+      = import 'lua-nucleo/table-utils.lua'
+      {
+        'tidentityset'
+      }
+
 local make_concatter -- TODO: rename, is not factory
 do
   make_concatter = function()
@@ -30,14 +36,37 @@ local trim = function(s)
   return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
--- TODO: Rename! (urlencode?)
-local escape_string = function(str)
-  return str:gsub(
-      "[%c]",
-      function(c)
-        return ("%%%02X"):format(c:byte())
-      end
+local create_escape_subst = function(string_subst, ignore)
+  ignore = ignore or { "\n", "\t" }
+  local subst = setmetatable(
+      tidentityset(ignore),
+      {
+        __metatable = "escape.char";
+        __index = function(t, k)
+          local v = (string_subst):format(k:byte())
+          t[k] = v
+          return v
+        end;
+      }
     )
+  return subst
+end
+
+-- WARNING: This is not a suitable replacement for urlencode
+local escape_string
+do
+  local escape_subst = create_escape_subst("%%%02X")
+  escape_string = function(str)
+    return (str:gsub("[%c%z\128-\255]", escape_subst))
+  end
+end
+
+local url_encode
+do
+  local escape_subst = create_escape_subst("%%%02X")
+  url_encode = function(str)
+    return str:gsub("([^%w-_ ])", escape_subst):gsub(" ", "+")
+  end
 end
 
 local htmlspecialchars = nil
@@ -157,11 +186,61 @@ do
   end
 end
 
+local escape_for_json
+do
+  -- Based on luajson code (comments copied verbatim).
+  -- https://github.com/harningt/luajson/blob/master/lua/json/encode/strings.lua
+
+  local matches =
+  {
+    ['"'] = '\\"';
+    ['\\'] = '\\\\';
+--    ['/'] = '\\/'; -- TODO: ?! Do we really need to escape this?
+    ['\b'] = '\\b';
+    ['\f'] = '\\f';
+    ['\n'] = '\\n';
+    ['\r'] = '\\r';
+    ['\t'] = '\\t';
+    ['\v'] = '\\v'; -- not in official spec, on report, removing
+  }
+
+  -- Pre-encode the control characters to speed up encoding...
+  -- NOTE: UTF-8 may not work out right w/ JavaScript
+  -- JavaScript uses 2 bytes after a \u... yet UTF-8 is a
+  -- byte-stream encoding, not pairs of bytes (it does encode
+  -- some letters > 1 byte, but base case is 1)
+  for i = 0, 255 do
+    local c = string.char(i)
+    if c:match('[%z\1-\031\128-\255]') and not matches[c] then
+      -- WARN: UTF8 specializes values >= 0x80 as parts of sequences...
+      --       without \x encoding, do not allow encoding > 7F
+      matches[c] = ('\\u%.4X'):format(i)
+    end
+  end
+
+  escape_for_json = function(s)
+    return '"' .. s:gsub('[\\"/%z\1-\031]', matches) .. '"'
+  end
+end
+
+local starts_with = function(str, prefix)
+  if type(str) ~= 'string' or type(prefix) ~= 'string' then return false end
+  local plen = #prefix
+  return (#str >= plen) and (str:sub(1, plen) == prefix)
+end
+
+local ends_with = function(str, suffix)
+  if type(str) ~= 'string' or type(suffix) ~= 'string' then return false end
+  local slen = #suffix
+  return slen == 0 or ((#str >= slen) and (str:sub(-slen, -1) == suffix))
+end
+
 return
 {
   escape_string = escape_string;
   make_concatter = make_concatter;
   trim = trim;
+  create_escape_subst = create_escape_subst;
   htmlspecialchars = htmlspecialchars;
   fill_placeholders_ex = fill_placeholders_ex;
   fill_placeholders = fill_placeholders;
@@ -173,4 +252,8 @@ return
   count_substrings = count_substrings;
   kv_concat = kv_concat;
   escape_lua_pattern = escape_lua_pattern;
+  escape_for_json = escape_for_json;
+  starts_with = starts_with;
+  ends_with = ends_with;
+  url_encode = url_encode;
 }

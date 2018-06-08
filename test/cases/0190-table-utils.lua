@@ -8,14 +8,16 @@ local ensure,
       ensure_equals,
       ensure_tequals,
       ensure_tdeepequals,
-      ensure_fails_with_substring
+      ensure_fails_with_substring,
+      ensure_error
       = import 'lua-nucleo/ensure.lua'
       {
         'ensure',
         'ensure_equals',
         'ensure_tequals',
         'ensure_tdeepequals',
-        'ensure_fails_with_substring'
+        'ensure_fails_with_substring',
+        'ensure_error'
       }
 
 local assert_is_table
@@ -38,6 +40,7 @@ local empty_table,
       tvalues,
       tkeysvalues,
       tflip,
+      tflip_inplace,
       tiflip,
       tset,
       tiset,
@@ -50,6 +53,8 @@ local empty_table,
       tequals,
       tiunique,
       tgenerate_n,
+      tgenerate_1d_linear,
+      tgenerate_2d_linear,
       taccumulate,
       tnormalize,
       tnormalize_inplace,
@@ -76,6 +81,16 @@ local empty_table,
       tilistofrecordfields,
       tipermute_inplace,
       tkvtorecordlist,
+      tgetpath,
+      tsetpath,
+      tsetpathvalue,
+      tslice,
+      tarraylisttohashlist,
+      tkvlist2kvpairs,
+      tfilterkeylist,
+      tisempty,
+      tifindvalue_nonrecursive,
+      tkvmap_unpack,
       table_utils_exports
       = import 'lua-nucleo/table-utils.lua'
       {
@@ -87,6 +102,7 @@ local empty_table,
         'tvalues',
         'tkeysvalues',
         'tflip',
+        'tflip_inplace',
         'tiflip',
         'tset',
         'tiset',
@@ -99,6 +115,8 @@ local empty_table,
         'tequals',
         'tiunique',
         'tgenerate_n',
+        'tgenerate_1d_linear',
+        'tgenerate_2d_linear',
         'taccumulate',
         'tnormalize',
         'tnormalize_inplace',
@@ -124,7 +142,17 @@ local empty_table,
         'timapofrecordgroups',
         'tilistofrecordfields',
         'tkvtorecordlist',
-        'tipermute_inplace'
+        'tipermute_inplace',
+        'tgetpath',
+        'tsetpath',
+        'tsetpathvalue',
+        'tslice',
+        'tarraylisttohashlist',
+        'tkvlist2kvpairs',
+        'tfilterkeylist',
+        'tisempty',
+        'tifindvalue_nonrecursive',
+        "tkvmap_unpack"
       }
 
 --------------------------------------------------------------------------------
@@ -663,6 +691,66 @@ test "tflip-many" (function()
       "many",
       tflip(t),
       { [42] = 1, [k] = "a", [false] = k }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tflip_inplace"
+
+--------------------------------------------------------------------------------
+
+test "tflip_inplace-empty" (function()
+  ensure_tequals("empty", tflip_inplace({ }), { })
+end)
+
+test "tflip_inplace-single" (function()
+  ensure_tequals("simple", tflip_inplace({ [1] = 42 }), { [1] = 42, [42] = 1 })
+end)
+
+test "tflip_inplace-hole" (function()
+  ensure_tequals("hole", tflip_inplace({ [42] = 1 }), { [1] = 42 ,  [42] = 1 })
+end)
+
+test "tflip_inplace-hash" (function()
+  ensure_tequals("hash", tflip_inplace({ ["a"] = 42 }), { [42] = "a",  ["a"] = 42 })
+end)
+
+test "tflip_inplace-duplicate" (function()
+  local t = tflip_inplace({ [1] = 42, [2] = 42 })
+  ensure(
+      "duplicate",
+      tequals(t, { [42] = 1, [1] = 42, [2] = 42 }) or tequals(t, { [42] = 2, [1] = 42, [2] = 42 })
+    )
+end)
+
+test "tflip_inplace-duplicate-hash" (function()
+  local t = tflip_inplace({ [1] = 42, ["a"] = 42 })
+  ensure(
+      "duplicate hash",
+      tequals(t, { [42] = 1, [1] = 42, ["a"] = 42 }) or tequals(t, { [42] = "a", [1] = 42, ["a"] = 42 })
+    )
+end)
+
+test "tflip_inplace-table" (function()
+  local k = { }
+  ensure_tequals("table", tflip_inplace({ [k] = 42 }), { [42] = k, [k] = 42 })
+end)
+
+test "tflip_inplace-recursive" (function()
+  local t = { }
+  t[1] = t
+  ensure_tequals("recursive", tflip_inplace(t), { [t] = 1, [1] = t })
+end)
+
+test "tflip_inplace-many" (function()
+  local k = { }
+  local t = { [1] = 42, a = k, [k] = false }
+  local r = tflip_inplace(t)
+
+  ensure(
+      "many",
+      tequals(r, { [1] = 42, [42] = 1, [k] = "a", a = k }) or tequals(r, { [1] = 42, [42] = 1, [false] = k, [k] = false, a = k })
     )
 end)
 
@@ -1640,6 +1728,569 @@ end)
 
 --------------------------------------------------------------------------------
 
+test:group "tslice"
+
+--------------------------------------------------------------------------------
+
+test "tslice_regular" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "regular tslice",
+      tslice(t, 2, 4),
+      { 2, 3, 4}
+    )
+end)
+
+test "tslice_out_of_right_range" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "right index is out of range",
+      tslice(t, 2, 6),
+      { 2, 3, 4, 5 }
+    )
+end)
+
+test "tslice_out_of_left_range" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "left index is out of range",
+      tslice(t, -1, 3),
+      { 1, 2, 3 }
+    )
+end)
+
+test "tslice_both_out_of_range" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "both indices are out of range",
+      tslice(t, -1, 6),
+      t
+    )
+end)
+
+test "tslice_left_index_exceeds_right" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "left index exceeds the right one",
+      tslice(t, 4, 2),
+      { }
+    )
+end)
+
+test "tslice_left_index_equals_to_right" (function()
+  local t = { 1, 2, 3, 4, 5 }
+  ensure_tequals(
+      "left index equals to the right one",
+      tslice(t, 3, 3),
+      { 3 }
+    )
+end)
+
+test "tslice_empty_table" (function()
+  local t = { }
+  ensure_tequals(
+      "input table is empty",
+      tslice(t, 1, 5),
+      { }
+    )
+end)
+
+test "tslice_table_contains_nil" (function()
+  local t = { 1, nil, 3, nil, nil, 6 }
+
+  ensure_tequals(
+      "input table contains nil",
+      tslice(t, 1, 6),
+      { 1, nil, 3, nil, nil, 6 }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tarraylisttohashlist"
+
+--------------------------------------------------------------------------------
+
+test "tarraylisttohashlist_regular" (function()
+  local t = { { 10, 20 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "regular tarraylisttohashlist",
+      tarraylisttohashlist(t, "a", "b"),
+      { { a = 10, b = 20 }, { a = 30, b = 40 } }
+    )
+end)
+
+test "tarraylisttohashlist_empty_table" (function()
+  local t = { }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist input table is empty",
+      tarraylisttohashlist(t, "a", "b"),
+      { }
+    )
+end)
+
+test "tarraylisttohashlist_empty_table_2" (function()
+  local t = { {}, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist input table contains empty table",
+      tarraylisttohashlist(t, "a", "b"),
+      { { }, { a = 30, b = 40 } }
+    )
+end)
+
+test "tarraylisttohashlist_empty_argument_list" (function()
+  local t = { { 10, 20 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist argument list is empty",
+      tarraylisttohashlist(t),
+      { { }, { } }
+    )
+end)
+
+test "tarraylisttohashlist_empty_params" (function()
+  local t = { }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist both params are empty",
+      tarraylisttohashlist(t),
+      { }
+    )
+end)
+
+test "tarraylisttohashlist_nil_in_table" (function()
+  local t = { { nil, 20 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist input table contains nil",
+      tarraylisttohashlist(t, "a", "b"),
+      { { a = nil, b = 20 }, { a = 30, b = 40 } }
+    )
+end)
+
+test "tarraylisttohashlist_nil_in_arguments" (function()
+  local t = { { 10, 20 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist argument list contains nil",
+      tarraylisttohashlist(t, nil, "b"),
+      { { b = 20 }, { b = 40 } }
+    )
+end)
+
+test "tarraylisttohashlist_length_not_matches" (function()
+  local t = { { 10, 20 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist too many values",
+      tarraylisttohashlist(t, "a"),
+      { { a = 10 }, { a = 30 } }
+    )
+end)
+
+test "tarraylisttohashlist_length_not_matches_2" (function()
+  local t = { { 10 }, { 30, 40 } }
+
+  ensure_tdeepequals(
+      "tarraylisttohashlist too many arguments",
+      tarraylisttohashlist(t, "a", "b"),
+      { { a = 10 }, { a = 30, b = 40 } }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tsetpathvalue"
+
+--------------------------------------------------------------------------------
+
+test "tsetpathvalue_basic" (function()
+  local value = 42
+  local dest = { }
+  local d = 'some key'
+  local path = { "a", "b", "c", d }
+
+  tsetpathvalue(value, dest, unpack(path))
+  ensure_tdeepequals(
+      'basic tsetpathvalue',
+      dest,
+      { ["a"] = { ["b"] = { ["c"] = { [d] = value } } } }
+    )
+end)
+
+test "tsetpathvalue_destination_is_filled_ok" (function()
+  local value = 42
+  local d = 'some key'
+  local dest = { ["a"] = { ["b"] = { ["c"] = { [d] = 'not 42' } } } }
+  local path = { "a", "b", "c", d }
+
+  tsetpathvalue(value, dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpathvalue destination table already contanis keys form the path',
+      dest,
+      { ["a"] = { ["b"] = { ["c"] = { [d] = value } } } }
+    )
+end)
+
+test "tsetpathvalue_destination_is_filled_not_ok" (function()
+  local value = 42
+  local d = 'some key'
+  local dest = { ["a"] = { ["b"] = { ["c"] = '42' } } }
+  local path = { "a", "b", "c", d }
+
+  ensure_fails_with_substring(
+      'value of existing key in the destination table is not a table',
+      function() tsetpathvalue(value, dest, unpack(path)) end,
+      "already exists and its value is not a table"
+    )
+end)
+
+test "tsetpathvalue_path_of_single_key" (function()
+  local value = 42
+  local dest = { }
+  local d = 'some key'
+  local path = { d }
+
+  tsetpathvalue(value, dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpathvalue path contains single key',
+      dest,
+      { [d] = value}
+    )
+end)
+
+test "tsetpathvalue_empty_path" (function()
+  local value = 42
+  local dest = { }
+  -- no path - no value assignment, destination table will not be changed
+  local path = { }
+
+  tsetpathvalue(value, dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpathvalue empty path, empty dest',
+      dest,
+      { }
+    )
+
+  dest = { ["1"] = 1, ["2"] = 2, ["3"] = { 3 } }
+
+  tsetpathvalue(value, dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpathvalue empty path, filled dest',
+      dest,
+      { ["1"] = 1, ["2"] = 2, ["3"] = { 3 } }
+    )
+end)
+
+test "tsetpathvalue_nil_in_the middle" (function()
+  local value = 42
+  local dest = { }
+  local d = 'some key'
+  local path = { "a", nil, "c", d }
+
+  ensure_fails_with_substring(
+      'tsetpathvalue path contains nil in the middle',
+      function() tsetpathvalue(value, dest, unpack(path)) end,
+      "tsetpathvalue: nil can't be a table key"
+    )
+end)
+
+test "tsetpathvalue_nil_in_the_end" (function()
+  local value = 42
+  local dest = { }
+
+  ensure_fails_with_substring(
+      'tsetpathvalue end key is nil',
+      function() tsetpathvalue(value, dest, nil) end,
+      "tsetpathvalue: nil can't be a table key"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tsetpath"
+
+--------------------------------------------------------------------------------
+
+test "tsetpath_basic" (function()
+  local dest = { }
+  local d = 'some key'
+  local path = { "a", "b", "c", d }
+
+  tsetpath(dest, unpack(path))
+  ensure_tdeepequals(
+      'basic tsetpath',
+      dest,
+      { ["a"] = { ["b"] = { ["c"] = { [d] = { } } } } }
+    )
+end)
+
+test "tsetpath_destination_is_filled_ok" (function()
+  local d = 'some key'
+  local dest = { ["a"] = { ["b"] = { ["c"] = { } } } }
+  local path = { "a", "b", "c", d }
+
+  tsetpath(dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpath destination table already contanis keys form the path',
+      dest,
+      { ["a"] = { ["b"] = { ["c"] = { [d] = { } } } } }
+    )
+end)
+
+test "tsetpath_destination_is_filled_not_ok" (function()
+  local d = 'some key'
+  local dest = { ["a"] = { ["b"] = { ["c"] = '42' } } }
+  local path = { "a", "b", "c", d }
+
+  ensure_fails_with_substring(
+      'value of existing key in the destination table is not a table',
+      function() tsetpath(dest, unpack(path)) end,
+      "already exists and its value is not a table"
+    )
+end)
+
+test "tsetpath_path_of_single_key" (function()
+  local dest = { }
+  local d = 'some key'
+  local path = { d }
+
+  tsetpath(dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpath path contains single key',
+      dest,
+      { [d] = { } }
+    )
+end)
+
+test "tsetpath_empty_path" (function()
+  local dest = { }
+  -- no path - no value assignment, destination table will not be changed
+  local path = { }
+
+  tsetpath(dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpath empty path, empty dest',
+      dest,
+      { }
+    )
+
+  dest = { ["a"] = { ["b"] = { ["c"] = { } } } }
+
+  tsetpath(dest, unpack(path))
+  ensure_tdeepequals(
+      'tsetpath empty path, filled dest',
+      dest,
+      { ["a"] = { ["b"] = { ["c"] = { } } } }
+    )
+end)
+
+test "tsetpath_nil_in_the middle" (function()
+  local dest = { }
+  local d = 'some key'
+  local path = { "a", nil, "c", d }
+
+  ensure_fails_with_substring(
+      'tsetpath path contains nil in the middle',
+      function() tsetpath(dest, unpack(path)) end,
+      "tsetpath: nil can't be a table key"
+    )
+end)
+
+test "tsetpath_nil_in_the_end" (function()
+  local dest = { }
+
+  ensure_fails_with_substring(
+      'tsetpath end key is nil',
+      function() tsetpath(dest, nil) end,
+      "tsetpath: nil can't be a table key"
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tkvlist2kvpairs"
+
+--------------------------------------------------------------------------------
+
+test "tkvlist2kvpairs_regular" (function()
+  local t = { "field_1", "value_1", "field_2", "value_2" }
+
+  ensure_tdeepequals(
+      "regular tkvlist2kvpairs",
+      tkvlist2kvpairs(t),
+      { ["field_1"] = "value_1", ["field_2"] = "value_2" }
+    )
+end)
+
+test "tkvlist2kvpairs_empty_table" (function()
+  local t = { }
+
+  ensure_tdeepequals(
+      "tkvlist2kvpairs input table is empty",
+      tkvlist2kvpairs(t),
+      { }
+    )
+end)
+
+test "tkvlist2kvpairs_nil_in_table_keys" (function()
+  local t = { nil, "value_1", "field_2", "value_2" }
+
+  ensure_tdeepequals(
+      "tkvlist2kvpairs input table contains nil",
+      tkvlist2kvpairs(t),
+      { ["field_2"] = "value_2" }
+    )
+end)
+
+test "tkvlist2kvpairs_nil_in_table_values" (function()
+  local t = { "field_1", nil, "field_2", "value_2" }
+
+  ensure_tdeepequals(
+      "tkvlist2kvpairs input table contains nil",
+      tkvlist2kvpairs(t),
+      { ["field_1"] = nil, ["field_2"] = "value_2" }
+    )
+end)
+
+test "tkvlist2kvpairs_odd_number_elements_in_table" (function()
+  local t = { "field_1", "value_1", "field_2" }
+
+  ensure_tdeepequals(
+      "tkvlist2kvpairs odd number of elements in the table",
+      tkvlist2kvpairs(t),
+      { ["field_1"] = "value_1", ["field_2"] = nil }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tfilterkeylist"
+
+--------------------------------------------------------------------------------
+
+test "tfilterkeylist_regular_nonstrict" (function()
+  local t =
+  {
+    ["a"] = 1;
+    ["b"] = 2;
+    ["c"] = 3;
+  }
+  local f = { "a", "b" }
+
+  ensure_tdeepequals(
+      "regular tfilterkeylist /nonstrict/",
+      tfilterkeylist(t, f),
+      { ["a"] = 1, ["b"] = 2 }
+    )
+end)
+
+test "tfilterkeylist_regular_strict" (function()
+  local t =
+  {
+    ["a"] = 1;
+    ["b"] = 2;
+    ["c"] = 3;
+  }
+  local f = { "a", "b" }
+
+  ensure_tdeepequals(
+      "regular tfilterkeylist /nonstrict/",
+      tfilterkeylist(t, f),
+      { ["a"] = 1, ["b"] = 2 }
+    )
+end)
+
+test "tfilterkeylist_empty_table_strict" (function()
+  local t = { }
+  local f = { "a", "b" }
+
+  ensure_error(
+      "tfilterkeylist with empty /strict/",
+      "Field a is absent",
+      tfilterkeylist(t, f, true)
+    )
+end)
+
+test "tfilterkeylist_empty_table_nonstrict" (function()
+  local t = { }
+  local f = { "a", "b" }
+
+  ensure_tdeepequals(
+      "tfilterkeylist with empty /nonstrict/",
+      tfilterkeylist(t, f, false),
+      { }
+    )
+end)
+
+test "tfilterkeylist_empty_fields_list_strict" (function()
+  local t =
+  {
+    ["a"] = 1;
+    ["b"] = 2;
+    ["c"] = 3;
+  }
+  local f = { }
+
+  ensure_tdeepequals(
+      "tfilterkeylist with empty fields list/strict/",
+      tfilterkeylist(t, f, false),
+      { }
+    )
+end)
+
+--------------------------------------------------------------------------------
+
+test:group "tkvmap_unpack"
+
+--------------------------------------------------------------------------------
+
+local find = function(t, value)
+  for i = 1, #t do
+    if t[i] == value then
+      return i
+    end
+  end
+  return false
+end
+
+test "tkvmap_unpack_simple" (function()
+  local t =
+  {
+    ["a"] = 1;
+    ["b"] = 2;
+  }
+  local r = { tkvmap_unpack(tostring, t) }
+  ensure_equals( "size", #r, 4)
+  local index = find(r, "a")
+  ensure( "'a' found", index )
+  ensure_equals( "value after key", r[index + 1], "1" )
+  index = find(r, "b")
+  ensure( "'b' found", index )
+  ensure_equals( "value after key", r[index + 1], "2" )
+end)
+
+test "tkvmap_unpack_array" (function()
+  local t =
+  {
+    "a";
+    "b";
+  }
+  local r = { tkvmap_unpack(tostring, t) }
+  ensure_equals( "size", #r, 4)
+  local index = find(r, "1")
+  ensure( "'1' found", index )
+  ensure_equals( "value after key", r[index + 1], "a" )
+  index = find(r, "2")
+  ensure( "'2' found", index )
+  ensure_equals( "value after key", r[index + 1], "b" )
+end)
+
+--------------------------------------------------------------------------------
+
 test:UNTESTED 'tmap_values'
 test:UNTESTED 'torderedset'
 test:UNTESTED 'torderedset_insert'
@@ -1659,6 +2310,11 @@ test:UNTESTED 'timapofrecordgroups'
 test:UNTESTED 'tilistofrecordfields'
 test:UNTESTED 'tipermute_inplace'
 test:UNTESTED 'tkvtorecordlist'
+test:UNTESTED 'tgetpath'
+test:UNTESTED 'tisempty'
+test:UNTESTED 'tifindvalue_nonrecursive'
+test:UNTESTED 'tgenerate_1d_linear'
+test:UNTESTED 'tgenerate_2d_linear'
 
 --------------------------------------------------------------------------------
 

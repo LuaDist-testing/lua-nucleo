@@ -1,9 +1,17 @@
+-- This file was automatically generated for the LuaDist project.
+
 package = "lua-nucleo"
-version = "scm-N"
+version = "0.0.3-1"
+-- LuaDist source
 source = {
-   url = "git://github.com/lua-nucleo/lua-nucleo.git",
-   branch = "master"
+  tag = "0.0.3-1",
+  url = "git://github.com/LuaDist-testing/lua-nucleo.git"
 }
+-- Original source
+-- source = {
+--    url = "git://github.com/lua-nucleo/lua-nucleo.git",
+--    branch = "v0.0.3"
+-- }
 description = {
    summary = "A random collection of core and utility level Lua libraries",
    homepage = "http://github.com/lua-nucleo/lua-nucleo",
@@ -37,6 +45,7 @@ build = {
          ["lua-nucleo.misc"] = "lua-nucleo/misc.lua";
          ["lua-nucleo.module"] = "lua-nucleo/module.lua";
          ["lua-nucleo.ordered_named_cat_manager"] = "lua-nucleo/ordered_named_cat_manager.lua";
+         ["lua-nucleo.pcall"] = "lua-nucleo/pcall.lua";
          ["lua-nucleo.prettifier"] = "lua-nucleo/prettifier.lua";
          ["lua-nucleo.priority_queue"] = "lua-nucleo/priority_queue.lua";
          ["lua-nucleo.random"] = "lua-nucleo/random.lua";

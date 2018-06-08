@@ -9,7 +9,8 @@
 
 -- TODO: Wish-list:
 -- * allow per-log-level sinks
--- * collect similar lines ("last line repeats n times") if timestamps are close enough.
+-- * collect similar lines ("last line repeats n times")
+---  if timestamps are close enough.
 -- * allows constant information prefixes (like PID)
 
 --------------------------------------------------------------------------------
@@ -50,20 +51,38 @@ local assert_is_table,
 
 local tflip,
       tstr_cat,
+      tstr,
       tclone,
+      tset,
       empty_table
       = import 'lua-nucleo/table.lua'
       {
         'tflip',
         'tstr_cat',
+        'tstr',
         'tclone',
+        'tset',
         'empty_table'
       }
 
-local do_nothing
+local tidentityset
+      = import 'lua-nucleo/table-utils.lua'
+      {
+        'tidentityset'
+      }
+
+local do_nothing,
+      invariant
       = import 'lua-nucleo/functional.lua'
       {
-        'do_nothing'
+        'do_nothing',
+        'invariant'
+      }
+
+local create_escape_subst
+      = import 'lua-nucleo/string.lua'
+      {
+        'create_escape_subst'
       }
 
 --------------------------------------------------------------------------------
@@ -98,6 +117,15 @@ local LOG_LEVEL =
   DEBUG = 3;
   SPAM  = 4;
 }
+
+local LOG_FLUSH_MODE =
+{
+  ALWAYS = 1;
+  EVERY_N_SECONDS = 2;
+  NEVER = 3;
+}
+
+local FLUSH_SECONDS_DEFAULT = 1
 
 local END_OF_LOG_MESSAGE = "\n"
 
@@ -182,18 +210,35 @@ do
       )
   end
 
-  make_common_logging_config = function(levels_config, modules_config)
-    optional_arguments(
-        "table", levels_config,
-        "table", modules_config
-      )
+  make_common_logging_config = function(
+      levels_config,
+      modules_config,
+      flush_type,
+      flush_time,
+      bufsize
+    )
     levels_config = levels_config or empty_table
     modules_config = modules_config or empty_table
-
+    flush_type = flush_type or LOG_FLUSH_MODE.EVERY_N_SECONDS
+    flush_time = flush_time or FLUSH_SECONDS_DEFAULT
+    -- Assuming 2048 to be minimal BUFSIZ value that one can encounter
+    -- in the wild these days
+    bufsize = bufsize or 2048 * 0.75
+    arguments(
+        "table", levels_config,
+        "table", modules_config,
+        "number", flush_type,
+        "number", flush_time,
+        "number", bufsize
+      )
     return
     {
       set_log_enabled = set_log_enabled;
       is_log_enabled = is_log_enabled; -- Required method
+      last_flush_time = 0;
+      flush_type = flush_type;
+      flush_time = flush_time;
+      bufsize = bufsize;
       --
       cache_ = make_config_cache(levels_config, modules_config);
     }
@@ -204,87 +249,126 @@ end
 
 local make_logging_system
 do
-  -- Private function
-  local make_logger
+  local logger_escape
   do
-    local function impl(sink, n, v, ...)
-      if n > 0 then
-        if type(v) ~= "table" then
-          sink(tostring(v))
-        else
-          tstr_cat(sink, v) -- Assuming this does not emit "\n"
-        end
+    -- Emulating Lua "%q" escape style, as tstr_cat() would use it
+    -- We do not dare to log any binary characters
+    -- Note that there is no sense to keep \128-\255 bytes unescaped,
+    -- since we already escape bytes in %c range,
+    -- and that ruins UTF-8 anyway.
+    local escape_subst = create_escape_subst("\\%03d")
 
-        if n > 1 then
-          sink(" ")
-          return impl(sink, n - 1, ...)
-        end
-      end
-
-      return sink(END_OF_LOG_MESSAGE)
-    end
-
-    make_logger = function( -- TODO: rename, is not factory
-        logging_config,
-        module_name,
-        level,
-        sink,
-        date_fn,
-        logger_id,
-        suffix
-      )
-      arguments(
-          "table", logging_config,
-          "string", module_name,
-          "number", level,
-          "function", sink,
-          "function", date_fn,
-          --"string", logger_id, -- TODO: Need metatype, may be function or string
-          "string", suffix
-        )
-
-      if is_function(logger_id) then
-        return function(...)
-          if logging_config:is_log_enabled(module_name, level) then
-            sink "[" (date_fn()) "] " (logger_id())
-                "[" (suffix) "] "
-
-            -- NOTE: Using explicit size since we have to support holes in the vararg.
-            return impl(sink, select("#", ...), ...)
-          end
-        end
-      else
-        assert_is_string(logger_id)
-        return function(...)
-          if logging_config:is_log_enabled(module_name, level) then
-            sink "[" (date_fn()) "] " (logger_id)
-                "[" (suffix) "] "
-
-            -- NOTE: Using explicit size since we have to support holes in the vararg.
-            return impl(sink, select("#", ...), ...)
-          end
-        end
-      end
+    logger_escape = function(s)
+      return tostring(s):gsub("[%c%z\128-\255]", escape_subst)
     end
   end
 
-  local make_module_logger = function(self, module_name, level, suffix)
+  -- private method
+  local wrap_sink = function(self, sink)
     method_arguments(
         self,
-        "string", module_name,
-        "number", level,
-        "string", suffix
+        "function", sink
       )
 
-    return make_logger(
-        self.config_,
+    local function wrapped_sink(s)
+      -- Assuming argument to be always a string, as per sink() contract.
+      self.bytes_to_next_flush_ = self.bytes_to_next_flush_ - #s
+
+      sink(s)
+
+      return wrapped_sink
+    end
+
+    return wrapped_sink
+  end
+
+  local make_module_logger
+  do
+    local function impl(self, timestamp, nargs, v, ...)
+      -- Sink the entire log message first
+      if nargs > 0 then
+        if type(v) ~= "table" then
+          v = logger_escape(v)
+        else
+          -- Assuming this does necessary escapes.
+          -- Note that under vanilla Lua 5.1 it does not escape
+          -- all necessary control characters (that's %q implementation
+          -- fault).
+          v = tstr(v)
+        end
+
+        self.sink_(v)
+        if nargs > 1 then
+          self.sink_(" ")
+          return impl(self, timestamp, nargs - 1, ...)
+        end
+      end
+
+      -- Log a newline.
+      self.sink_(END_OF_LOG_MESSAGE)
+
+      -- Now, let's see if we need to flush.
+      -- Note that we want to do this only at EOLM,
+      -- to ensure that if several processes are writing
+      -- to the same log file, all log lines are still intact.
+
+      local config = self:get_config()
+
+      -- Note that we use >, not >= when comparing timestamps,
+      -- since time may have large granularity (seconds), and thus
+      -- this function may be called several times per
+      -- self.timestamp_ value.
+      local need_flush = (config.flush_type == LOG_FLUSH_MODE.ALWAYS)
+        or (
+            config.flush_type == LOG_FLUSH_MODE.EVERY_N_SECONDS
+              and (
+                  timestamp > self.next_flush_timestamp_ or
+                  self.bytes_to_next_flush_ <= 0
+                )
+          )
+
+      if need_flush then
+        self.flush_()
+        self.next_flush_timestamp_ = timestamp + config.flush_time
+        -- TODO: Rename config.bufsize as per review.
+        self.bytes_to_next_flush_ = config.bufsize
+      end
+
+      -- TODO: Make sure this is absolutely needed.
+      --       Now that we have advanced flush semantics,
+      --       using returned value directly may lead to log synch problems.
+      return self.sink_
+    end
+
+    make_module_logger = function(
+        self, -- logging_system object
         module_name,
         level,
-        self.sink_,
-        self.date_fn_,
-        self.logger_id_,
         suffix
       )
+      method_arguments(
+          self,
+          "string", module_name,
+          "number", level,
+          "string", suffix
+        )
+
+      return function(...)
+        if self:get_config():is_log_enabled(module_name, level) then
+          local timestamp = self.get_time_() -- TODO: Hack
+
+          self.sink_ "[" (
+              self.date_fn_(timestamp)
+            ) "] " (self.logger_id_()) "[" (suffix) "] "
+
+          return impl(
+              self,
+              timestamp,
+              select("#", ...), ...
+            )
+        end
+      end
+    end
   end
 
   local get_config = function(self)
@@ -298,27 +382,52 @@ do
   --
   -- Sink also must behave like cat(), that is, return itself.
   --
-  make_logging_system = function(logger_id, sink, logging_config, date_fn)
-    date_fn = date_fn or get_current_logsystem_date
+  -- Sink must not flush the logging stream.
+  --
+  make_logging_system = function(
+      logger_id,
+      sink,
+      logging_config,
+      date_fn,
+      flush,
+      get_time
+    )
+    if is_string(logger_id) then
+      logger_id = invariant(logger_id)
+    end
 
-    assert(is_string(logger_id) or is_function(logger_id))
+    date_fn = date_fn or get_current_logsystem_date
+    flush = flush or do_nothing
+    get_time = get_time or os_time
+
     arguments(
-        -- "string", logger_id, -- TODO: Need metatype may be function or string
+        "function", logger_id,
         "function", sink,
         "table", logging_config,
-        "function", date_fn
+        "function", date_fn,
+        "function", flush,
+        "function", get_time
       )
 
-    return
+    local self =
     {
       get_config = get_config;
       make_module_logger = make_module_logger;
       --
       logger_id_ = logger_id;
-      sink_ = sink;
+      sink_ = nil; -- set below
       date_fn_ = date_fn;
       config_ = logging_config;
+      flush_ = flush;
+      get_time_ = get_time;
+      -- Shared state to ensure consistent flushing --
+      bytes_to_next_flush_ = 0;
+      next_flush_timestamp_ = 0;
     }
+
+    self.sink_ = wrap_sink(self, sink)
+
+    return self
   end
 end
 
@@ -327,10 +436,9 @@ end
 local wrap_file_sink = function(file)
   -- TODO: assert_is_object(file)
   local function sink(v)
+    -- Accepts only strings, by contract, no type checks for speed
     file:write(v)
-    if v == END_OF_LOG_MESSAGE then
-      file:flush() -- TODO: ?! Slow.
-    end
+    -- Note that fsync is now done by the logging system
     return sink
   end
 
@@ -347,7 +455,7 @@ do
           logger:make_module_logger(
               module_name,
               assert(info.level),
-              module_prefix..assert(info.suffix)
+              module_prefix .. assert_is_string(info.suffix)
             )
         , impl(logger, module_name, module_prefix, ...)
     end
@@ -382,6 +490,8 @@ return
 {
   LOG_LEVEL = LOG_LEVEL;
   END_OF_LOG_MESSAGE = END_OF_LOG_MESSAGE;
+  LOG_FLUSH_MODE = LOG_FLUSH_MODE;
+  FLUSH_SECONDS_DEFAULT = FLUSH_SECONDS_DEFAULT;
   --
   format_logsystem_date = format_logsystem_date;
   get_current_logsystem_date = get_current_logsystem_date;
